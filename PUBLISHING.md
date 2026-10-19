@@ -10,7 +10,7 @@ How to get this extension into the Visual Studio Marketplace (what VS Code's Ext
 npm ci
 npm run typecheck
 npm test
-npx vsce package --no-dependencies      # produces jsonata-exerciser-1.0.0.vsix
+npx vsce package --no-dependencies      # produces jsonata-exerciser-1.0.1.vsix
 ```
 
 `--no-dependencies` is correct here because everything is bundled by esbuild into `dist/`.
@@ -18,7 +18,7 @@ npx vsce package --no-dependencies      # produces jsonata-exerciser-1.0.0.vsix
 Install and try the `.vsix` before publishing:
 
 ```bash
-code --install-extension jsonata-exerciser-1.0.0.vsix
+code --install-extension jsonata-exerciser-1.0.1.vsix
 ```
 
 Run through this smoke test in a real VS Code window:
@@ -37,7 +37,7 @@ Run through this smoke test in a real VS Code window:
 npx vsce login <publisher-id>            # paste the PAT
 npx vsce publish                          # publishes the version in package.json
 # or bump and publish in one step:
-npx vsce publish patch                    # 1.0.0 -> 1.0.1 (also: minor, major)
+npx vsce publish patch                    # 1.0.1 -> 1.0.2 (also: minor, major)
 ```
 
 The listing appears after an automated verification (usually minutes). Update by increasing `version`, adding a `CHANGELOG.md` entry and publishing again. Use `npx vsce publish --pre-release` for a pre-release channel (needs an odd/even minor-version convention, see the VS Code docs on pre-release extensions).
@@ -48,7 +48,7 @@ Unpublish or deprecate from <https://marketplace.visualstudio.com/manage>.
 
 ```bash
 npx ovsx create-namespace <publisher-id> -p <OVSX_TOKEN>   # once
-npx ovsx publish jsonata-exerciser-1.0.0.vsix -p <OVSX_TOKEN>
+npx ovsx publish jsonata-exerciser-1.0.1.vsix -p <OVSX_TOKEN>
 ```
 
 Create the token at <https://open-vsx.org> (sign in with GitHub, accept the publisher agreement).

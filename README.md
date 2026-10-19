@@ -16,6 +16,8 @@ A local, real-time [JSONata](https://jsonata.org) playground and debugger inside
 └───────────────────┴────────────────────────────┘
 ```
 
+![JSONata Exerciser showing the input JSON, expression editor, and live result panes](images/jsonata-exerciser-screenshot.png)
+
 ## Getting started
 
 1. Run **JSONata: Open Exerciser** from the Command Palette (`Ctrl+Shift+P`), or **JSONata: Open Exerciser with Demo...** to start from one of 8 built-in demos (paths, grouping, higher-order functions, regex/dates, recursion, and an intentionally broken expression to practice debugging).

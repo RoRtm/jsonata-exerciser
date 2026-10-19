@@ -1,5 +1,5 @@
 name: Publish
-# Create a GitHub release (or push a tag like v0.1.0) to publish.
+# Create a GitHub release (or push a tag like v1.0.1) to publish.
 # Requires repository secrets VSCE_PAT (Visual Studio Marketplace) and optionally OVSX_PAT (Open VSX).
 on:
   push:

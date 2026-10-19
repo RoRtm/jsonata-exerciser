@@ -11,7 +11,7 @@ import { formatJsonata } from '../core/format';
 import { FUNCTIONS, FUNCTION_BY_NAME } from '../core/functions';
 
 const evaluator = new Evaluator();
-const server = new McpServer({ name: 'jsonata-exerciser', version: '0.1.0' });
+const server = new McpServer({ name: 'jsonata-exerciser', version: '1.0.1' });
 // The SDK's zod-generic typings are extremely deep; a loose alias keeps type-checking fast and stable.
 const tool = server.registerTool.bind(server) as (name: string, config: unknown, cb: (args: any) => unknown) => void;
 

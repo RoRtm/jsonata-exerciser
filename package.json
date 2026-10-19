@@ -2,7 +2,7 @@
   "name": "jsonata-exerciser",
   "displayName": "JSONata Exerciser",
   "description": "Local, real-time JSONata playground and debugger for VS Code: live output, IntelliSense, validation, formatter, demos, online help and Copilot / Claude integration.",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "publisher": "ro-rtm",
   "license": "MIT",
   "icon": "images/icon.png",
