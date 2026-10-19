@@ -1,0 +1,85 @@
+{
+  "$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
+  "name": "JSONata",
+  "scopeName": "source.jsonata",
+  "patterns": [
+    { "include": "#comment" },
+    { "include": "#string" },
+    { "include": "#regex" },
+    { "include": "#number" },
+    { "include": "#constant" },
+    { "include": "#keyword" },
+    { "include": "#function-call" },
+    { "include": "#variable" },
+    { "include": "#backtick-name" },
+    { "include": "#operator" },
+    { "include": "#field" }
+  ],
+  "repository": {
+    "comment": {
+      "name": "comment.block.jsonata",
+      "begin": "/\\*",
+      "end": "\\*/"
+    },
+    "string": {
+      "patterns": [
+        {
+          "name": "string.quoted.double.jsonata",
+          "begin": "\"",
+          "end": "\"",
+          "patterns": [{ "name": "constant.character.escape.jsonata", "match": "\\\\(?:[\"\\\\/bfnrt]|u[0-9A-Fa-f]{4})" }]
+        },
+        {
+          "name": "string.quoted.single.jsonata",
+          "begin": "'",
+          "end": "'",
+          "patterns": [{ "name": "constant.character.escape.jsonata", "match": "\\\\(?:['\\\\/bfnrt]|u[0-9A-Fa-f]{4})" }]
+        }
+      ]
+    },
+    "regex": {
+      "name": "string.regexp.jsonata",
+      "match": "(?<=[(,\\[:=?{]|~>|\\band\\b|\\bor\\b)\\s*(/)((?:[^/\\\\\\n*]|\\\\.)(?:[^/\\\\\\n]|\\\\.)*)(/)([imsx]*)",
+      "captures": {
+        "1": { "name": "punctuation.definition.string.begin.jsonata" },
+        "3": { "name": "punctuation.definition.string.end.jsonata" },
+        "4": { "name": "keyword.other.flags.jsonata" }
+      }
+    },
+    "number": {
+      "name": "constant.numeric.jsonata",
+      "match": "(?<![\\w$])-?(?:0|[1-9]\\d*)(?:\\.\\d+)?(?:[eE][+-]?\\d+)?"
+    },
+    "constant": {
+      "name": "constant.language.jsonata",
+      "match": "\\b(?:true|false|null)\\b"
+    },
+    "keyword": {
+      "patterns": [
+        { "name": "storage.type.function.jsonata", "match": "\\b(?:function)\\b|λ" },
+        { "name": "keyword.operator.word.jsonata", "match": "\\b(?:and|or|in)\\b" }
+      ]
+    },
+    "function-call": {
+      "match": "(\\$[A-Za-z_][\\w]*)(?=\\s*\\()",
+      "name": "support.function.jsonata"
+    },
+    "variable": {
+      "name": "variable.other.jsonata",
+      "match": "\\$\\$|\\$[A-Za-z_][\\w]*|\\$"
+    },
+    "backtick-name": {
+      "name": "variable.other.field.jsonata",
+      "begin": "`",
+      "end": "`"
+    },
+    "operator": {
+      "name": "keyword.operator.jsonata",
+      "match": "~>|:=|\\.\\.\\.|\\*\\*|!=|<=|>=|[-+*/%&|=<>?:^~@#.]"
+    },
+    "field": {
+      "name": "variable.other.field.jsonata",
+      "match": "[A-Za-z_\\p{L}][\\w\\p{L}]*"
+    }
+  }
+}

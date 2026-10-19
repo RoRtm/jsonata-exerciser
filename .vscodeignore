@@ -1,0 +1,15 @@
+.vscode/**
+.github/**
+src/**
+test/**
+node_modules/**
+**/*.map
+**/*.ts
+tsconfig.json
+esbuild.mjs
+.gitignore
+.gitattributes
+PUBLISHING.md
+CONTRIBUTING.md
+CLAUDE.md
+AGENTS.md

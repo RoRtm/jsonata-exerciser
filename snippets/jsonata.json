@@ -1,0 +1,67 @@
+{
+  "Lambda function": {
+    "prefix": "function",
+    "body": ["function(${1:\\$v}) { ${2:\\$v} }"],
+    "description": "Anonymous function (lambda)"
+  },
+  "Named function in block": {
+    "prefix": "fn",
+    "body": ["(", "  \\$${1:name} := function(${2:\\$x}) { ${3:\\$x} };", "  \\$${1:name}(${4:value})", ")"],
+    "description": "Block with a user-defined function"
+  },
+  "Variable block": {
+    "prefix": "block",
+    "body": ["(", "  \\$${1:x} := ${2:expression};", "  ${3:\\$${1:x}}", ")"],
+    "description": "Expression block with a variable"
+  },
+  "Map": {
+    "prefix": "map",
+    "body": ["\\$map(${1:array}, function(\\$v, \\$i, \\$a) { ${2:\\$v} })"],
+    "description": "$map with lambda"
+  },
+  "Filter": {
+    "prefix": "filter",
+    "body": ["\\$filter(${1:array}, function(\\$v, \\$i, \\$a) { ${2:\\$v} })"],
+    "description": "$filter with lambda"
+  },
+  "Reduce": {
+    "prefix": "reduce",
+    "body": ["\\$reduce(${1:array}, function(\\$prev, \\$curr) { \\$prev + \\$curr }, ${2:0})"],
+    "description": "$reduce with lambda and initial value"
+  },
+  "Sort": {
+    "prefix": "sort",
+    "body": ["\\$sort(${1:array}, function(\\$l, \\$r) { \\$l.${2:field} > \\$r.${2:field} })"],
+    "description": "$sort with comparator"
+  },
+  "Conditional": {
+    "prefix": "if",
+    "body": ["${1:condition} ? ${2:then} : ${3:else}"],
+    "description": "Conditional (ternary) expression"
+  },
+  "Object constructor": {
+    "prefix": "obj",
+    "body": ["{ \"${1:key}\": ${2:value} }"],
+    "description": "Object constructor"
+  },
+  "Array of objects mapping": {
+    "prefix": "reshape",
+    "body": ["${1:items}.{ \"${2:key}\": ${3:field} }"],
+    "description": "Reshape each item of an array into a new object"
+  },
+  "Group by": {
+    "prefix": "groupby",
+    "body": ["${1:items}{ ${2:key}: { \"count\": \\$count(\\$), \"items\": \\$ } }"],
+    "description": "Group items by a key (object constructor on a path)"
+  },
+  "Regex match": {
+    "prefix": "regex",
+    "body": ["\\$match(${1:str}, /${2:pattern}/${3:i})"],
+    "description": "$match with regular expression"
+  },
+  "Try / default": {
+    "prefix": "default",
+    "body": ["${1:value} ? ${1:value} : ${2:default}"],
+    "description": "Fallback when a value is missing"
+  }
+}

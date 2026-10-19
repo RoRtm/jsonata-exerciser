@@ -1,0 +1,30 @@
+name: Publish
+# Create a GitHub release (or push a tag like v0.1.0) to publish.
+# Requires repository secrets VSCE_PAT (Visual Studio Marketplace) and optionally OVSX_PAT (Open VSX).
+on:
+  push:
+    tags: ['v*']
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm test
+      - run: npx vsce package --no-dependencies -o jsonata-exerciser.vsix
+      - name: Publish to Visual Studio Marketplace
+        run: npx vsce publish --no-dependencies --packagePath jsonata-exerciser.vsix
+        env:
+          VSCE_PAT: ${{ secrets.VSCE_PAT }}
+      - name: Publish to Open VSX (optional)
+        if: ${{ env.OVSX_PAT != '' }}
+        run: npx ovsx publish jsonata-exerciser.vsix -p "$OVSX_PAT"
+        env:
+          OVSX_PAT: ${{ secrets.OVSX_PAT }}
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: jsonata-exerciser.vsix

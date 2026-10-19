@@ -1,0 +1,154 @@
+import { test, describe, after } from 'node:test';
+import assert from 'node:assert/strict';
+import * as path from 'node:path';
+import { Evaluator } from '../src/core/evaluator';
+import { analyze, errorToRange, sameAst } from '../src/core/analyze';
+import { formatJsonata, FormatError } from '../src/core/format';
+import { fieldSuggestions, callContextAt } from '../src/core/intel';
+import { DEMOS, demoInputText } from '../src/core/demos';
+import { FUNCTIONS, paramLabels } from '../src/core/functions';
+
+const workerPath = path.join(__dirname, '..', 'dist', 'worker.js');
+const ev = new Evaluator({ workerPath });
+after(() => ev.dispose());
+
+describe('evaluator (official jsonata in a worker)', () => {
+  test('evaluates a simple expression', async () => {
+    const r = await ev.evaluate({ expression: '$sum(a.b)', input: '{"a":[{"b":1},{"b":2}]}' });
+    assert.equal(r.status, 'ok');
+    assert.equal((r as any).text, '3');
+  });
+
+  test('undefined result is reported as empty', async () => {
+    const r = await ev.evaluate({ expression: 'nothing', input: '{}' });
+    assert.equal(r.status, 'empty');
+  });
+
+  test('syntax error carries code and position', async () => {
+    const r = await ev.evaluate({ expression: '$sum(', input: '{}' });
+    assert.equal(r.status, 'error');
+    assert.equal((r as any).phase, 'parse');
+    assert.ok((r as any).error.code);
+  });
+
+  test('runtime error is flagged as eval phase', async () => {
+    const r = await ev.evaluate({ expression: 'a + "x"', input: '{"a":1}' });
+    assert.equal(r.status, 'error');
+    assert.equal((r as any).phase, 'eval');
+    assert.equal((r as any).error.code, 'T2002'); // right side of + is not a number
+  });
+
+  test('invalid input JSON is reported separately', async () => {
+    const r = await ev.evaluate({ expression: 'a', input: '{oops' });
+    assert.equal(r.status, 'error');
+    assert.equal((r as any).phase, 'input');
+  });
+
+  test('runaway recursion is aborted by the timeout and the evaluator recovers', async () => {
+    const r = await ev.evaluate({
+      expression: '($f := function($x){ $f($x) }; $f(1))',
+      input: '{}',
+      timeoutMs: 800
+    });
+    assert.ok(r.status === 'timeout' || r.status === 'error', `got ${r.status}`);
+    const again = await ev.evaluate({ expression: '1+1' });
+    assert.equal(again.status, 'ok');
+  });
+
+  test('supersede cancels the previous request', async () => {
+    const live = new Evaluator({ workerPath, supersede: true });
+    const first = live.evaluate({ expression: '($f := function($x){ $f($x) }; $f(1))', timeoutMs: 5000 });
+    const second = await live.evaluate({ expression: '2*3' });
+    assert.equal(second.status, 'ok');
+    assert.equal((await first).status, 'cancelled');
+    live.dispose();
+  });
+});
+
+describe('demos', () => {
+  for (const d of DEMOS) {
+    test(`demo "${d.label}" ${d.expectError ? 'fails as intended' : 'evaluates cleanly'}`, async () => {
+      const r = await ev.evaluate({ expression: d.expression, input: demoInputText(d) });
+      if (d.expectError) assert.equal(r.status, 'error');
+      else {
+        assert.equal(r.status, 'ok', JSON.stringify(r));
+        assert.ok((r as any).text.length > 0);
+      }
+    });
+  }
+});
+
+describe('analyze', () => {
+  test('valid expression has no issues', () => {
+    assert.deepEqual(analyze('$sum(a.b)').issues, []);
+  });
+  test('syntax error is located', () => {
+    const { issues } = analyze('a.b +');
+    assert.equal(issues.length, 1);
+    assert.equal(issues[0].severity, 'error');
+  });
+  test('unknown function warns, user-defined does not', () => {
+    assert.equal(analyze('$nope(1)').issues[0].severity, 'warning');
+    assert.deepEqual(analyze('($f := function($x){$x}; $f(1))').issues, []);
+    assert.deepEqual(analyze('$map([1],function($v){$v})').issues, []);
+  });
+  test('errorToRange never leaves the document', () => {
+    const r = errorToRange({ position: 999 }, 'abc');
+    assert.ok(r.start >= 0 && r.end <= 3 && r.end > r.start);
+  });
+});
+
+describe('formatter', () => {
+  test('formats and preserves semantics', async () => {
+    const src = '$map(xs,function($v,$i){$v+$i})  ~>   $sum()';
+    const out = await formatJsonata(src);
+    assert.ok(sameAst(src, out));
+    assert.notEqual(out, src);
+  });
+  test('refuses to emit output that changes the AST', async () => {
+    // Known printer limitation: predicate after an object constructor is dropped.
+    const src = 'Account.Order.Product.{"name":ProductName}[total>10]';
+    await assert.rejects(() => formatJsonata(src), FormatError);
+  });
+  test('syntax errors are rejected with a message', async () => {
+    await assert.rejects(() => formatJsonata('a +'), FormatError);
+  });
+  test('all demo expressions survive formatting or are refused safely', async () => {
+    for (const d of DEMOS) {
+      try {
+        const out = await formatJsonata(d.expression);
+        assert.ok(sameAst(d.expression, out), d.label);
+      } catch (e) {
+        assert.ok(e instanceof FormatError, d.label);
+      }
+    }
+  });
+});
+
+describe('intellisense helpers', () => {
+  const doc = { Account: { Order: [{ Product: [{ Name: 'x', Price: 1 }], id: 'o1' }] }, other: 1 };
+  test('suggests children after a dotted path', () => {
+    const names = fieldSuggestions(doc, 'Account.Order.').map((f) => f.name).sort();
+    assert.deepEqual(names, ['Product', 'id']);
+  });
+  test('resolves relative paths anywhere in the document', () => {
+    const names = fieldSuggestions(doc, 'Product.').map((f) => f.name).sort();
+    assert.deepEqual(names, ['Name', 'Price']);
+  });
+  test('falls back to all keys without a path', () => {
+    assert.ok(fieldSuggestions(doc, 'x + ').length >= 5);
+  });
+  test('signature help context', () => {
+    assert.deepEqual(callContextAt('$substring(a, '), { name: 'substring', argIndex: 1 });
+    assert.deepEqual(callContextAt('$map(xs, function($v) { $v + '), { name: 'map', argIndex: 1 });
+    assert.equal(callContextAt('$sum(a) + '), undefined);
+    assert.equal(callContextAt('$join("a,'), undefined); // inside a string
+  });
+  test('every function has a valid parameter range list', () => {
+    for (const f of FUNCTIONS) {
+      for (const [a, b] of paramLabels(f)) {
+        assert.ok(a >= 0 && b > a && b <= f.signature.length, f.signature);
+      }
+    }
+  });
+});
