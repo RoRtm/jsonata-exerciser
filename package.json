@@ -2,18 +2,18 @@
   "name": "jsonata-exerciser",
   "displayName": "JSONata Exerciser",
   "description": "Local, real-time JSONata playground and debugger for VS Code: live output, IntelliSense, validation, formatter, demos, online help and Copilot / Claude integration.",
-  "version": "0.1.0",
-  "publisher": "your-publisher-id",
+  "version": "1.0.0",
+  "publisher": "ro-rtm",
   "license": "MIT",
   "icon": "images/icon.png",
   "repository": {
     "type": "git",
-    "url": "https://github.com/your-org/jsonata-exerciser.git"
+    "url": "https://github.com/RoRtm/jsonata-exerciser.git"
   },
   "bugs": {
-    "url": "https://github.com/your-org/jsonata-exerciser/issues"
+    "url": "https://github.com/RoRtm/jsonata-exerciser/issues"
   },
-  "homepage": "https://github.com/your-org/jsonata-exerciser#readme",
+  "homepage": "https://github.com/RoRtm/jsonata-exerciser#readme",
   "engines": {
     "vscode": "^1.101.0"
   },
