@@ -9,6 +9,8 @@ import { Evaluator, describeResult } from '../core/evaluator';
 import { analyze } from '../core/analyze';
 import { formatJsonata } from '../core/format';
 import { FUNCTIONS, FUNCTION_BY_NAME } from '../core/functions';
+import { describeStructure } from '../core/schema';
+import { CHEATSHEET, DIRECTIVES } from '../core/cheatsheet';
 
 const evaluator = new Evaluator();
 const server = new McpServer({ name: 'jsonata-exerciser', version: '1.0.1' });
@@ -28,13 +30,22 @@ tool(
       'Evaluate a JSONata expression against JSON input locally (official jsonata library). ' +
       'Provide the input as a JSON string (`input`) or as a path to a local JSON file (`input_file`).',
     inputSchema: {
-      expression: z.string().describe('The JSONata expression'),
+      expression: z.string().optional().describe('The JSONata expression (or use expression_file)'),
+      expression_file: z.string().optional().describe('Path to a .jsonata file used instead of `expression`'),
       input: z.string().optional().describe('Input document as a JSON string'),
       input_file: z.string().optional().describe('Path to a local JSON file used as input'),
       timeout_ms: z.number().int().min(100).max(60000).optional().describe('Abort after this many ms (default 5000)')
     }
   },
-  async ({ expression, input, input_file, timeout_ms }) => {
+  async ({ expression, expression_file, input, input_file, timeout_ms }) => {
+    if (expression === undefined && expression_file) {
+      try {
+        expression = await fs.readFile(expression_file, 'utf8');
+      } catch (e: any) {
+        return text(`Cannot read expression_file: ${e.message}`, true);
+      }
+    }
+    if (expression === undefined) return text('Provide `expression` or `expression_file`.', true);
     let doc = input;
     if (doc === undefined && input_file) {
       try {
@@ -95,6 +106,42 @@ tool(
       ? text(`${f.signature}\n${f.description}\n${f.url}`)
       : text(`No built-in function named "${name}".`, true);
   }
+);
+
+tool(
+  'jsonata_describe_input',
+  {
+    title: 'Describe JSON structure',
+    description:
+      'Compact outline of a JSON document (keys, types, nesting, arrays, optional keys, sample values, example JSONata paths). Call this BEFORE writing a JSONata expression so paths use the exact key names. Pass `input` (JSON text) or `input_file` (path).',
+    inputSchema: { input: z.string().optional(), input_file: z.string().optional() }
+  },
+  async ({ input, input_file }) => {
+    let doc = input;
+    if (doc === undefined && input_file) {
+      try {
+        doc = await fs.readFile(input_file, 'utf8');
+      } catch (e: any) {
+        return text(`Cannot read input_file: ${e.message}`, true);
+      }
+    }
+    if (doc === undefined) return text('Provide `input` or `input_file`.', true);
+    try {
+      return text(describeStructure(JSON.parse(doc)));
+    } catch (e: any) {
+      return text(`Input is not valid JSON: ${e.message}`, true);
+    }
+  }
+);
+
+tool(
+  'jsonata_guide',
+  {
+    title: 'JSONata guide',
+    description: 'JSONata 2.x cheat sheet, all built-in function signatures and the recommended workflow. JSONata is NOT JavaScript: read this if unsure about syntax.',
+    inputSchema: {}
+  },
+  async () => text(`${CHEATSHEET}\n\nAll built-in functions:\n${FUNCTIONS.map((f) => f.signature).join('\n')}\n\n${DIRECTIVES}`)
 );
 
 process.on('exit', () => evaluator.dispose());

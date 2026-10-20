@@ -5,6 +5,7 @@ import { MemFs, ResultContent } from './memfs';
 import { DiagnosticsManager, registerProviders } from './providers';
 import { SessionManager } from './session';
 import { registerAi, mcpConfigText } from './ai';
+import { addAiInstructions } from './instructions';
 
 export function activate(ctx: vscode.ExtensionContext): void {
   const memfs = new MemFs();
@@ -24,7 +25,18 @@ export function activate(ctx: vscode.ExtensionContext): void {
   const reg = (id: string, fn: (...args: any[]) => unknown) =>
     ctx.subscriptions.push(vscode.commands.registerCommand(id, fn));
 
-  reg('jsonataExerciser.open', () => session.open());
+  reg('jsonataExerciser.open', () => session.openFrom());
+  const runHandler = () => {
+    const ed = vscode.window.activeTextEditor;
+    const lang = ed?.document.languageId;
+    const ok = ed && ed.document.uri.scheme !== ResultContent.scheme && (lang === 'json' || lang === 'jsonc' || lang === 'jsonata');
+    return session.openFrom(ok ? ed!.document.uri : undefined);
+  };
+  reg('jsonataExerciser.run', runHandler);
+  reg('jsonataExerciser.runExpression', runHandler);
+  reg('jsonataExerciser.openWith', (uri?: vscode.Uri) => session.openFrom(uri instanceof vscode.Uri ? uri : undefined));
+  reg('jsonataExerciser.bindInput', (uri?: vscode.Uri) => session.bindInput(uri instanceof vscode.Uri ? uri : undefined));
+  reg('jsonataExerciser.resetScratch', () => session.resetScratch());
 
   reg('jsonataExerciser.openDemo', async () => {
     const pick = await vscode.window.showQuickPick(
@@ -35,8 +47,8 @@ export function activate(ctx: vscode.ExtensionContext): void {
   });
 
   reg('jsonataExerciser.openWithFiles', async () => {
-    const exprDoc = vscode.window.activeTextEditor?.document;
-    let exprUri = exprDoc?.languageId === 'jsonata' ? exprDoc.uri : undefined;
+    const active = vscode.window.activeTextEditor?.document;
+    let exprUri = active?.languageId === 'jsonata' && active.uri.scheme === 'file' ? active.uri : undefined;
     if (!exprUri) {
       const picked = await vscode.window.showOpenDialog({
         title: 'Choose the JSONata expression file',
@@ -52,12 +64,18 @@ export function activate(ctx: vscode.ExtensionContext): void {
       canSelectMany: false
     });
     if (!pickedInput?.[0]) return;
-    await session.open({ inputUri: pickedInput[0], exprUri });
+    await session.link({ inputUri: pickedInput[0], exprUri });
   });
 
   reg('jsonataExerciser.evaluate', async () => {
-    if (!session.active) await session.open();
-    else await session.evaluateNow();
+    // From a JSON / .jsonata file that is not yet part of the Exerciser: link it, then evaluate.
+    const ed = vscode.window.activeTextEditor;
+    if (ed && ed.document.uri.scheme !== ResultContent.scheme && !session.isSessionUri(ed.document.uri)) {
+      const lang = ed.document.languageId;
+      if (lang === 'json' || lang === 'jsonc' || lang === 'jsonata') return session.openFrom(ed.document.uri);
+    }
+    if (!session.active) return session.open();
+    return session.evaluateNow();
   });
 
   reg('jsonataExerciser.format', () => vscode.commands.executeCommand('editor.action.formatDocument'));
@@ -97,6 +115,8 @@ export function activate(ctx: vscode.ExtensionContext): void {
     if (name && FUNCTION_BY_NAME.has(name)) return openUrl(FUNCTION_BY_NAME.get(name)!.url);
     return vscode.commands.executeCommand('jsonataExerciser.openHelp');
   });
+
+  reg('jsonataExerciser.addAiInstructions', () => addAiInstructions());
 
   reg('jsonataExerciser.openTryOnline', () => openUrl('https://try.jsonata.org/'));
 

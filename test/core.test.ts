@@ -152,3 +152,52 @@ describe('intellisense helpers', () => {
     }
   });
 });
+
+import { parseInputComment, withInputComment } from '../src/core/bindings';
+describe('input bindings', () => {
+  test('parses the header comment', () => {
+    assert.equal(parseInputComment('/* input: ./data/order.json */\na.b'), './data/order.json');
+    assert.equal(parseInputComment('/* INPUT : "C:/x/y.json" */ a'), 'C:/x/y.json');
+    assert.equal(parseInputComment('a.b /* just a comment */'), undefined);
+  });
+  test('writes and replaces the header comment', () => {
+    const once = withInputComment('a.b', './x.json');
+    assert.equal(once, '/* input: ./x.json */\na.b');
+    assert.equal(withInputComment(once, './y.json'), '/* input: ./y.json */\na.b');
+    assert.ok(sameAst('a.b', once)); // comment does not change the expression
+  });
+});
+
+import { describeStructure } from '../src/core/schema';
+import { CHEATSHEET } from '../src/core/cheatsheet';
+describe('structure summary for AI prompts', () => {
+  const data = {
+    customer: { name: 'A' },
+    orders: [
+      { id: 'x', items: [{ price: 1, qty: 2 }], note: 'n' },
+      { id: 'y', items: [{ price: 3 }] }
+    ]
+  };
+  const out = describeStructure(data);
+  test('shows nesting, arrays, optional keys and sample paths', () => {
+    assert.match(out, /orders: array<object> \[2 items\]/);
+    assert.match(out, /items: array<object>/);
+    assert.match(out, /qty\?: number/); // missing in one element
+    assert.match(out, /note\?: string/);
+    assert.match(out, /Example leaf paths: .*orders\.items\.price/);
+  });
+  test('handles scalars, empty arrays and odd keys', () => {
+    assert.match(describeStructure(5), /\$: number/);
+    assert.match(describeStructure({ a: [] }), /a: array<empty> \[0 items\]/);
+    assert.match(describeStructure({ 'first name': 1 }), /`first name`: number/);
+  });
+  test('is much smaller than large data', () => {
+    const big = { rows: Array.from({ length: 5000 }, (_, i) => ({ id: i, name: 'n' + i })) };
+    assert.ok(describeStructure(big).length < 1200);
+  });
+  test('cheat sheet examples are valid JSONata', async () => {
+    const samples = ['orders[-1].id', 'items^(>price)', 'items{category: $sum(price)}', 'a.b[]', '$not(1=2)'];
+    for (const s of samples) assert.deepEqual(analyze(s).issues, [], s);
+    assert.ok(CHEATSHEET.length > 500);
+  });
+});

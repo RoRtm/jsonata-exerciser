@@ -2,7 +2,7 @@
   "name": "jsonata-exerciser",
   "displayName": "JSONata Exerciser",
   "description": "Local, real-time JSONata playground and debugger for VS Code: live output, IntelliSense, validation, formatter, demos, online help and Copilot / Claude integration.",
-  "version": "1.0.1",
+  "version": "1.2.3",
   "publisher": "ro-rtm",
   "license": "MIT",
   "icon": "images/icon.png",
@@ -90,8 +90,38 @@
         "icon": "$(beaker)"
       },
       {
+        "command": "jsonataExerciser.run",
+        "title": "Open JSONata Exerciser",
+        "category": "JSONata",
+        "icon": {
+          "light": "./images/jsonata-button-32.png",
+          "dark": "./images/jsonata-button-32-dark.png"
+        }
+      },
+      {
+        "command": "jsonataExerciser.runExpression",
+        "title": "Run JSONata Expression",
+        "category": "JSONata",
+        "icon": "$(play)"
+      },
+      {
+        "command": "jsonataExerciser.openWith",
+        "title": "Open in JSONata Exerciser",
+        "category": "JSONata"
+      },
+      {
         "command": "jsonataExerciser.openWithFiles",
         "title": "Open Exerciser with Existing Files...",
+        "category": "JSONata"
+      },
+      {
+        "command": "jsonataExerciser.bindInput",
+        "title": "Bind Input JSON to Expression File...",
+        "category": "JSONata"
+      },
+      {
+        "command": "jsonataExerciser.resetScratch",
+        "title": "Switch Back to Scratch Input/Expression",
         "category": "JSONata"
       },
       {
@@ -135,6 +165,11 @@
         "command": "jsonataExerciser.applyExpression",
         "title": "Apply Expression to Exerciser",
         "category": "JSONata"
+      },
+      {
+        "command": "jsonataExerciser.addAiInstructions",
+        "title": "Add Copilot / Claude Instructions to Workspace...",
+        "category": "JSONata"
       }
     ],
     "keybindings": [
@@ -153,7 +188,12 @@
     "menus": {
       "editor/title": [
         {
-          "command": "jsonataExerciser.open",
+          "command": "jsonataExerciser.run",
+          "when": "resourceLangId == json || resourceLangId == jsonc",
+          "group": "navigation@1"
+        },
+        {
+          "command": "jsonataExerciser.runExpression",
           "when": "resourceLangId == jsonata",
           "group": "navigation@1"
         },
@@ -168,6 +208,37 @@
           "group": "navigation@3"
         }
       ],
+      "explorer/context": [
+        {
+          "command": "jsonataExerciser.openWith",
+          "when": "resourceExtname == .json || resourceExtname == .jsonc || resourceExtname == .jsonata",
+          "group": "navigation@50"
+        },
+        {
+          "command": "jsonataExerciser.bindInput",
+          "when": "resourceExtname == .jsonata",
+          "group": "navigation@51"
+        }
+      ],
+      "editor/context": [
+        {
+          "command": "jsonataExerciser.openWith",
+          "when": "resourceScheme != jsonata-result && (resourceLangId == json || resourceLangId == jsonc || resourceLangId == jsonata)",
+          "group": "navigation@50"
+        },
+        {
+          "command": "jsonataExerciser.bindInput",
+          "when": "resourceLangId == jsonata && resourceScheme == file",
+          "group": "navigation@51"
+        }
+      ],
+      "editor/title/context": [
+        {
+          "command": "jsonataExerciser.openWith",
+          "when": "resourceScheme != jsonata-result && (resourceLangId == json || resourceLangId == jsonc || resourceLangId == jsonata)",
+          "group": "1_open@50"
+        }
+      ],
       "commandPalette": [
         {
           "command": "jsonataExerciser.applyExpression",
@@ -178,6 +249,11 @@
     "configuration": {
       "title": "JSONata Exerciser",
       "properties": {
+        "jsonataExerciser.followEditors": {
+          "type": "boolean",
+          "default": true,
+          "description": "Keep the Exerciser linked to what you show in its panes: a JSON file you open (e.g. from the Explorer) is moved into the left editor group and becomes the input; a .jsonata file is moved into the top-right group and becomes the expression."
+        },
         "jsonataExerciser.autoEvaluate": {
           "type": "boolean",
           "default": true,
@@ -219,7 +295,7 @@
         "id": "jsonata-exerciser.jsonata",
         "name": "jsonata",
         "fullName": "JSONata Exerciser",
-        "description": "Write, explain and fix JSONata expressions against your Exerciser input",
+        "description": "Write, explain and fix JSONata expressions. Reads your Exerciser data, #file references and ```json / ```jsonata blocks in the prompt",
         "isSticky": true,
         "commands": [
           {
@@ -243,7 +319,7 @@
         "toolReferenceName": "jsonataEvaluate",
         "displayName": "Evaluate JSONata",
         "userDescription": "Evaluate a JSONata expression against JSON input locally.",
-        "modelDescription": "Evaluates a JSONata expression against a JSON document using the official jsonata library, locally. Returns the pretty-printed JSON result or the JSONata error (code, message, position). Use this to test an expression before proposing it to the user.",
+        "modelDescription": "Evaluates a JSONata expression against JSON data locally with the official jsonata library and returns the pretty-printed result or the JSONata error (code, message, position). ALWAYS use this to test an expression before presenting it. Pass the data inline (`input`) or, for files in the workspace, by path (`inputFile`, workspace-relative or absolute); the expression inline (`expression`) or by path (`expressionFile`).",
         "canBeReferencedInPrompt": true,
         "icon": "$(play)",
         "tags": [
@@ -257,14 +333,19 @@
               "type": "string",
               "description": "The JSONata expression."
             },
+            "expressionFile": {
+              "type": "string",
+              "description": "Path of a .jsonata file to use instead of `expression` (workspace-relative or absolute)."
+            },
             "input": {
               "type": "string",
-              "description": "The input JSON document as a JSON string. Omit to evaluate against no input."
+              "description": "The input JSON document as a JSON string."
+            },
+            "inputFile": {
+              "type": "string",
+              "description": "Path of a JSON file to use as input instead of `input` (workspace-relative or absolute). Preferred for large files."
             }
-          },
-          "required": [
-            "expression"
-          ]
+          }
         }
       },
       {
@@ -292,11 +373,53 @@
         }
       },
       {
+        "name": "jsonata_inputStructure",
+        "toolReferenceName": "jsonataInputStructure",
+        "displayName": "Summarize JSON structure",
+        "userDescription": "Outline of a JSON document (keys, nesting, arrays) to help write JSONata paths.",
+        "modelDescription": "Returns a compact outline of a JSON document: key names, value types, nesting, array boundaries, optional keys, sample values and example JSONata leaf paths. Use it before writing a JSONata expression so paths use the exact key names. Without arguments it describes the JSONata Exerciser input; or pass `input` (JSON text) or `inputFile` (path).",
+        "canBeReferencedInPrompt": true,
+        "icon": "$(list-tree)",
+        "tags": [
+          "jsonata",
+          "json"
+        ],
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "input": {
+              "type": "string",
+              "description": "JSON text (optional)."
+            },
+            "inputFile": {
+              "type": "string",
+              "description": "Path of a JSON file (optional)."
+            }
+          }
+        }
+      },
+      {
+        "name": "jsonata_guide",
+        "toolReferenceName": "jsonataGuide",
+        "displayName": "JSONata guide",
+        "userDescription": "JSONata cheat sheet, function list and recommended workflow.",
+        "modelDescription": "Returns a JSONata 2.x cheat sheet (paths, predicates, grouping, operators, common mistakes), the full list of built-in function signatures and the recommended workflow for writing expressions. Call it if you are unsure about JSONata syntax; JSONata is NOT JavaScript.",
+        "canBeReferencedInPrompt": true,
+        "icon": "$(book)",
+        "tags": [
+          "jsonata"
+        ],
+        "inputSchema": {
+          "type": "object",
+          "properties": {}
+        }
+      },
+      {
         "name": "jsonata_getExerciser",
         "toolReferenceName": "jsonataExerciserState",
         "displayName": "Read JSONata Exerciser",
         "userDescription": "Read the expression, input and current result from the JSONata Exerciser.",
-        "modelDescription": "Returns the JSONata expression, the input JSON, the current output and any error shown in the user's JSONata Exerciser. Call this first when the user asks about 'my expression', 'the error' or 'the output'.",
+        "modelDescription": "Returns everything about the user's open JSONata Exerciser: input and expression file names, the current expression, its result or error, a compact outline of the input JSON structure (key names, nesting, arrays) and the beginning of the input data. Call this FIRST whenever the user mentions their JSON, 'the data', 'my expression', 'the error' or 'the output', or asks you to write or fix a JSONata expression.",
         "canBeReferencedInPrompt": true,
         "icon": "$(eye)",
         "tags": [

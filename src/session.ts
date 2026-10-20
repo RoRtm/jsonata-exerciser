@@ -1,10 +1,13 @@
 import * as vscode from 'vscode';
+import * as path from 'node:path';
 import { Evaluator, EvalResult, describeResult } from './core/evaluator';
 import { Demo, DEMOS, demoInputText } from './core/demos';
+import { parseInputComment, withInputComment } from './core/bindings';
 import { MemFs, ResultContent } from './memfs';
 import type { DiagnosticsManager } from './providers';
 
 const STATE_KEY = 'jsonataExerciser.lastSession';
+const BINDINGS_KEY = 'jsonataExerciser.bindings';
 
 export interface SessionSnapshot {
   open: boolean;
@@ -19,9 +22,14 @@ function cfg() {
   return vscode.workspace.getConfiguration('jsonataExerciser');
 }
 
+type Kind = 'json' | 'expr' | 'other';
+
 /**
  * The Exerciser: three editors (input JSON | JSONata expression | live result) wired together.
- * Evaluation runs on every edit (debounced) in a worker thread, entirely locally.
+ *
+ * The input and the expression are linked independently: each can be a scratch document (virtual,
+ * never prompts to save) or any real file. Evaluation runs on every edit (debounced) in a worker
+ * thread, entirely locally.
  */
 export class SessionManager implements vscode.Disposable {
   readonly inputUriDefault = vscode.Uri.parse(`${MemFs.scheme}:/input.json`);
@@ -54,17 +62,21 @@ export class SessionManager implements vscode.Disposable {
     this.disposables.push(
       this.status,
       vscode.workspace.onDidChangeTextDocument((e) => {
-        if (!this.active) return;
-        if (this.isSessionUri(e.document.uri)) this.schedule();
+        if (this.active && this.isSessionUri(e.document.uri)) this.schedule();
       }),
       vscode.workspace.onDidChangeConfiguration((e) => {
         if (e.affectsConfiguration('jsonataExerciser')) this.schedule();
-      })
+      }),
+      vscode.window.onDidChangeActiveTextEditor((ed) => void this.followEditor(ed))
     );
   }
 
   isSessionUri(uri: vscode.Uri): boolean {
     return uri.toString() === this.inputUri.toString() || uri.toString() === this.exprUri.toString();
+  }
+
+  private isScratch(uri: vscode.Uri): boolean {
+    return uri.scheme === MemFs.scheme;
   }
 
   get last(): EvalResult | undefined {
@@ -76,41 +88,250 @@ export class SessionManager implements vscode.Disposable {
     return this._lastGoodInput;
   }
 
-  // ---------------------------------------------------------------- opening
+  // ---------------------------------------------------------------- classification
+
+  private kindOf(uri: vscode.Uri): Kind {
+    const doc = vscode.workspace.textDocuments.find((d) => d.uri.toString() === uri.toString());
+    const lang = doc?.languageId;
+    const ext = path.extname(uri.path).toLowerCase();
+    if (lang === 'jsonata' || ext === '.jsonata') return 'expr';
+    if (lang === 'json' || lang === 'jsonc' || ext === '.json' || ext === '.jsonc') return 'json';
+    return 'other';
+  }
+
+  // ---------------------------------------------------------------- bindings
+
+  private bindings(): Record<string, string> {
+    return this.ctx.workspaceState.get<Record<string, string>>(BINDINGS_KEY, {});
+  }
+
+  private rememberBinding(): void {
+    if (this.isScratch(this.exprUri) || this.isScratch(this.inputUri)) return;
+    const b = this.bindings();
+    if (b[this.exprUri.toString()] === this.inputUri.toString()) return;
+    b[this.exprUri.toString()] = this.inputUri.toString();
+    void this.ctx.workspaceState.update(BINDINGS_KEY, b);
+  }
+
+  private async exists(uri: vscode.Uri): Promise<boolean> {
+    try {
+      await vscode.workspace.fs.stat(uri);
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  /** Input JSON bound to an expression file: `input:` header comment first, then remembered link. */
+  async resolveBinding(exprUri: vscode.Uri): Promise<vscode.Uri | undefined> {
+    if (this.isScratch(exprUri)) return undefined;
+    try {
+      const rel = parseInputComment(await this.getText(exprUri));
+      if (rel) {
+        const target = path.isAbsolute(rel) ? vscode.Uri.file(rel) : vscode.Uri.joinPath(exprUri, '..', rel);
+        if (await this.exists(target)) return target;
+      }
+    } catch {
+      /* unreadable: fall through to remembered binding */
+    }
+    const saved = this.bindings()[exprUri.toString()];
+    if (saved) {
+      const u = vscode.Uri.parse(saved);
+      if (await this.exists(u)) return u;
+    }
+    return undefined;
+  }
+
+  /** User action: choose the JSON file for an expression file and remember it. */
+  async bindInput(exprUri?: vscode.Uri): Promise<void> {
+    const target = exprUri ?? vscode.window.activeTextEditor?.document.uri;
+    if (!target || this.isScratch(target) || this.kindOf(target) !== 'expr') {
+      void vscode.window.showInformationMessage('Open or select a .jsonata file (saved on disk) first.');
+      return;
+    }
+    const picked = await vscode.window.showOpenDialog({
+      title: `Input JSON for ${path.basename(target.path)}`,
+      defaultUri: vscode.Uri.joinPath(target, '..'),
+      filters: { JSON: ['json', 'jsonc'] },
+      canSelectMany: false
+    });
+    const input = picked?.[0];
+    if (!input) return;
+    const b = this.bindings();
+    b[target.toString()] = input.toString();
+    await this.ctx.workspaceState.update(BINDINGS_KEY, b);
+
+    const choice = await vscode.window.showInformationMessage(
+      'Also write the binding as an "input:" comment at the top of the expression, so it travels with the file (e.g. in git)?',
+      'Write comment',
+      'No'
+    );
+    if (choice === 'Write comment' && target.scheme === 'file' && input.scheme === 'file') {
+      const rel = path.relative(path.dirname(target.fsPath), input.fsPath).split(path.sep).join('/');
+      const doc = await vscode.workspace.openTextDocument(target);
+      const edit = new vscode.WorkspaceEdit();
+      edit.replace(
+        target,
+        new vscode.Range(doc.positionAt(0), doc.positionAt(doc.getText().length)),
+        withInputComment(doc.getText(), rel.startsWith('.') ? rel : `./${rel}`)
+      );
+      await vscode.workspace.applyEdit(edit);
+    }
+    await this.link({ exprUri: target, inputUri: input });
+  }
+
+  // ---------------------------------------------------------------- opening & linking
+
+  /**
+   * Context-aware entry point (used by the Explorer/editor context menu and "Evaluate Now"):
+   * a JSON file becomes the input, a .jsonata file becomes the expression; the other side is kept.
+   */
+  async openFrom(uri?: vscode.Uri): Promise<void> {
+    const target = uri ?? vscode.window.activeTextEditor?.document.uri;
+    if (!target || target.scheme === ResultContent.scheme || this.isSessionUri(target)) {
+      await this.open();
+      return;
+    }
+    const kind = this.kindOf(target);
+    if (kind === 'json') await this.link({ inputUri: target });
+    else if (kind === 'expr') await this.link({ exprUri: target });
+    else await this.open();
+  }
+
+  /** Change what the input and/or expression point to (opens the Exerciser if needed). */
+  async link(patch: { inputUri?: vscode.Uri; exprUri?: vscode.Uri }): Promise<void> {
+    await this.open({ ...patch });
+  }
 
   async open(opts: { demo?: Demo; inputUri?: vscode.Uri; exprUri?: vscode.Uri } = {}): Promise<void> {
-    const custom = !!(opts.inputUri && opts.exprUri);
-    this.inputUri = custom ? opts.inputUri! : this.inputUriDefault;
-    this.exprUri = custom ? opts.exprUri! : this.exprUriDefault;
+    const wasActive = this.active;
 
-    if (!custom) {
-      const needsInit = !this.fileExists(this.inputUri) || !this.fileExists(this.exprUri);
-      if (opts.demo) {
-        await this.setContent(this.inputUri, demoInputText(opts.demo));
-        await this.setContent(this.exprUri, opts.demo.expression);
-      } else if (needsInit) {
-        const saved = this.ctx.globalState.get<{ input: string; expression: string }>(STATE_KEY);
-        const fallback = DEMOS[0];
-        await this.setContent(this.inputUri, saved?.input ?? demoInputText(fallback));
-        await this.setContent(this.exprUri, saved?.expression ?? fallback.expression);
+    if (opts.demo) {
+      this.inputUri = this.inputUriDefault;
+      this.exprUri = this.exprUriDefault;
+      await this.setContent(this.inputUri, demoInputText(opts.demo));
+      await this.setContent(this.exprUri, opts.demo.expression);
+    } else {
+      if (opts.inputUri) this.inputUri = opts.inputUri;
+      else if (!wasActive) this.inputUri = this.inputUriDefault;
+      if (opts.exprUri) this.exprUri = opts.exprUri;
+      else if (!wasActive) this.exprUri = this.exprUriDefault;
+
+      // A new expression file brings its bound input along (header comment or remembered link).
+      if (opts.exprUri && !opts.inputUri) {
+        const bound = await this.resolveBinding(opts.exprUri);
+        if (bound) this.inputUri = bound;
+        else if (this.isScratch(this.inputUri)) {
+          const visible = vscode.window.visibleTextEditors.find(
+            (e) => !this.isScratch(e.document.uri) && e.document.uri.scheme !== ResultContent.scheme && this.kindOf(e.document.uri) === 'json'
+          );
+          if (visible) this.inputUri = visible.document.uri;
+          else this.hintBind(opts.exprUri);
+        }
       }
+      await this.ensureScratch();
     }
-    this.active = true;
 
-    await vscode.commands.executeCommand('vscode.setEditorLayout', {
-      orientation: 0,
-      groups: [{ size: 0.4 }, { groups: [{ size: 0.55 }, { size: 0.45 }], size: 0.6 }]
-    });
+    this.active = true;
+    this.rememberBinding();
+    await this.showPanes();
+    this.status.show();
+    await this.evaluateNow();
+  }
+
+  private hintBind(exprUri: vscode.Uri): void {
+    void vscode.window
+      .showInformationMessage(
+        `No input JSON is linked to ${path.basename(exprUri.path)} yet. Showing the scratch input.`,
+        'Choose JSON file...'
+      )
+      .then((c) => {
+        if (c) void this.bindInput(exprUri);
+      });
+  }
+
+  /** Back to the virtual scratch input/expression. */
+  async resetScratch(): Promise<void> {
+    await this.open({ inputUri: this.inputUriDefault, exprUri: this.exprUriDefault });
+  }
+
+  private async ensureScratch(): Promise<void> {
+    const saved = this.ctx.globalState.get<{ input?: string; expression?: string }>(STATE_KEY);
+    const fallback = DEMOS[0];
+    if (this.inputUri.toString() === this.inputUriDefault.toString() && !this.fileExists(this.inputUri)) {
+      await this.setContent(this.inputUri, saved?.input ?? demoInputText(fallback));
+    }
+    if (this.exprUri.toString() === this.exprUriDefault.toString() && !this.fileExists(this.exprUri)) {
+      await this.setContent(this.exprUri, saved?.expression ?? (this.isScratch(this.inputUri) ? fallback.expression : '$'));
+    }
+  }
+
+  /**
+   * Show input | expression | result in columns 1 | 2 | 3. The layout is only (re)created when the
+   * three groups do not exist yet, so we never rearrange an already working window.
+   */
+  private async showPanes(): Promise<void> {
+    if (vscode.window.tabGroups.all.length < 3) {
+      await vscode.commands.executeCommand('vscode.setEditorLayout', {
+        orientation: 0,
+        groups: [{ size: 0.4 }, { groups: [{ size: 0.55 }, { size: 0.45 }], size: 0.6 }]
+      });
+    }
     const inputDoc = await vscode.workspace.openTextDocument(this.inputUri);
     const exprDoc = await vscode.workspace.openTextDocument(this.exprUri);
     const resultDoc = await vscode.workspace.openTextDocument(ResultContent.uri);
+    // Always (re)show all three panes so a closed editor comes back.
     await vscode.window.showTextDocument(inputDoc, { viewColumn: vscode.ViewColumn.One, preserveFocus: true, preview: false });
     await vscode.window.showTextDocument(resultDoc, { viewColumn: vscode.ViewColumn.Three, preserveFocus: true, preview: false });
     if (resultDoc.languageId !== 'jsonc') await vscode.languages.setTextDocumentLanguage(resultDoc, 'jsonc');
     await vscode.window.showTextDocument(exprDoc, { viewColumn: vscode.ViewColumn.Two, preview: false });
+  }
 
-    this.status.show();
-    await this.evaluateNow();
+  /**
+   * Follow what the user shows in the panes: a JSON file opened anywhere is moved into the left
+   * group and becomes the input; a .jsonata file is moved into the second group and becomes the
+   * expression.
+   */
+  private async followEditor(ed: vscode.TextEditor | undefined): Promise<void> {
+    if (!this.active || !ed || !cfg().get<boolean>('followEditors', true)) return;
+    const uri = ed.document.uri;
+    if (uri.scheme === ResultContent.scheme || this.isSessionUri(uri)) return;
+    if (uri.scheme !== 'file' && uri.scheme !== 'untitled' && uri.scheme !== MemFs.scheme) return;
+    const kind = this.kindOf(uri);
+
+    // A JSON / .jsonata file opened anywhere else (e.g. from the Explorer into the focused group)
+    // is moved into its proper pane; moving re-triggers this handler in the right column.
+    if (kind === 'json' && ed.viewColumn !== undefined && ed.viewColumn !== vscode.ViewColumn.One) {
+      if (vscode.window.tabGroups.all.length >= 3) {
+        await vscode.commands.executeCommand('workbench.action.moveEditorToFirstGroup');
+        return;
+      }
+    }
+    if (kind === 'expr' && ed.viewColumn !== undefined && ed.viewColumn !== vscode.ViewColumn.Two) {
+      if (vscode.window.tabGroups.all.length >= 3) {
+        await vscode.commands.executeCommand('workbench.action.moveEditorToSecondGroup');
+        return;
+      }
+    }
+
+    if (kind === 'json' && ed.viewColumn === vscode.ViewColumn.One) {
+      this.inputUri = uri;
+      this.rememberBinding();
+      await this.evaluateNow();
+    } else if (kind === 'expr' && ed.viewColumn === vscode.ViewColumn.Two) {
+      this.exprUri = uri;
+      const bound = await this.resolveBinding(uri);
+      if (bound && bound.toString() !== this.inputUri.toString()) {
+        this.inputUri = bound;
+        await vscode.window.showTextDocument(await vscode.workspace.openTextDocument(bound), {
+          viewColumn: vscode.ViewColumn.One,
+          preserveFocus: true,
+          preview: false
+        });
+      }
+      this.rememberBinding();
+      await this.evaluateNow();
+    }
   }
 
   private fileExists(uri: vscode.Uri): boolean {
@@ -220,34 +441,43 @@ export class SessionManager implements vscode.Disposable {
     this.result.set(text);
   }
 
+  private linkLabel(): string {
+    const name = (u: vscode.Uri) => (this.isScratch(u) ? 'scratch' : path.basename(u.path));
+    return `Input: ${name(this.inputUri)} | Expression: ${name(this.exprUri)}`;
+  }
+
   private updateStatus(r: EvalResult | undefined): void {
+    const links = this.linkLabel();
     if (!r) {
       this.status.text = '$(symbol-event) JSONata';
-      this.status.tooltip = 'JSONata Exerciser';
+      this.status.tooltip = `JSONata Exerciser\n${links}`;
       this.status.backgroundColor = undefined;
       return;
     }
     if (r.status === 'ok' || r.status === 'empty') {
       this.status.text = `$(check) JSONata ${r.ms} ms`;
-      this.status.tooltip = r.status === 'empty' ? 'Evaluated: no result' : 'Evaluated successfully';
+      this.status.tooltip = `${r.status === 'empty' ? 'Evaluated: no result' : 'Evaluated successfully'}\n${links}`;
       this.status.backgroundColor = undefined;
     } else {
       this.status.text = `$(error) JSONata ${r.status === 'error' ? 'error' : r.status}`;
-      this.status.tooltip = describeResult(r);
+      this.status.tooltip = `${describeResult(r)}\n${links}`;
       this.status.backgroundColor = new vscode.ThemeColor('statusBarItem.errorBackground');
     }
   }
 
   private persistSoon(input: string, expression: string): void {
-    if (this.exprUri.toString() !== this.exprUriDefault.toString()) return;
+    // Only scratch documents are remembered across restarts; real files live on disk.
     if (this.persistTimer) clearTimeout(this.persistTimer);
     this.persistTimer = setTimeout(() => {
-      void this.ctx.globalState.update(STATE_KEY, { input, expression });
+      const saved = { ...(this.ctx.globalState.get<{ input?: string; expression?: string }>(STATE_KEY) ?? {}) };
+      if (this.isScratch(this.inputUri)) saved.input = input;
+      if (this.isScratch(this.exprUri)) saved.expression = expression;
+      void this.ctx.globalState.update(STATE_KEY, saved);
     }, 800);
-    // keep virtual docs saved so closing the tab never prompts
+    // keep virtual docs saved so closing the tab never prompts (real files are never auto-saved)
     for (const uri of [this.inputUri, this.exprUri]) {
       const d = vscode.workspace.textDocuments.find((x) => x.uri.toString() === uri.toString());
-      if (d?.isDirty && uri.scheme === MemFs.scheme) void d.save();
+      if (d?.isDirty && this.isScratch(uri)) void d.save();
     }
   }
 
