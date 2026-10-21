@@ -2,7 +2,7 @@
   "name": "jsonata-exerciser",
   "displayName": "JSONata Exerciser",
   "description": "Local, real-time JSONata playground and debugger for VS Code: live output, IntelliSense, validation, formatter, demos, online help and Copilot / Claude integration.",
-  "version": "1.2.3",
+  "version": "1.2.4",
   "publisher": "ro-rtm",
   "license": "MIT",
   "icon": "images/icon.png",
@@ -170,6 +170,11 @@
         "command": "jsonataExerciser.addAiInstructions",
         "title": "Add Copilot / Claude Instructions to Workspace...",
         "category": "JSONata"
+      },
+      {
+        "command": "jsonataExerciser.saveAs",
+        "title": "Save Scratch Expression/Input to File...",
+        "category": "JSONata"
       }
     ],
     "keybindings": [
@@ -183,6 +188,18 @@
         "command": "jsonataExerciser.helpAtCursor",
         "key": "shift+f1",
         "when": "editorTextFocus && editorLangId == jsonata"
+      },
+      {
+        "command": "jsonataExerciser.saveAs",
+        "key": "ctrl+s",
+        "mac": "cmd+s",
+        "when": "resourceScheme == jsonata-exerciser"
+      },
+      {
+        "command": "jsonataExerciser.saveAs",
+        "key": "ctrl+shift+s",
+        "mac": "cmd+shift+s",
+        "when": "resourceScheme == jsonata-exerciser"
       }
     ],
     "menus": {

@@ -36,6 +36,7 @@ export function activate(ctx: vscode.ExtensionContext): void {
   reg('jsonataExerciser.runExpression', runHandler);
   reg('jsonataExerciser.openWith', (uri?: vscode.Uri) => session.openFrom(uri instanceof vscode.Uri ? uri : undefined));
   reg('jsonataExerciser.bindInput', (uri?: vscode.Uri) => session.bindInput(uri instanceof vscode.Uri ? uri : undefined));
+  reg('jsonataExerciser.saveAs', (uri?: vscode.Uri) => session.saveScratchAs(uri instanceof vscode.Uri ? uri : undefined));
   reg('jsonataExerciser.resetScratch', () => session.resetScratch());
 
   reg('jsonataExerciser.openDemo', async () => {

@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.2.4
+
+- The scratch `expression.jsonata` / `input.json` panes live in memory only, so Ctrl+S appeared to do nothing. Ctrl+S / Save As on a scratch pane now opens a Save dialog, writes a real file and links the Exerciser to it (command **JSONata: Save Scratch Expression/Input to File...**).
+
 ## 1.2.3
 
 - The JSON editor title-bar button uses a white variant of the button image (`images/jsonata-button-32-dark.png`) on dark themes.

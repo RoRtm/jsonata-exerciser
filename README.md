@@ -36,6 +36,7 @@ Your last scratch session is restored the next time you open the Exerciser.
 * **Closed a pane?** Click the **Open JSONata Exerciser** button (JSONata image) in the title bar of a JSON or result editor, or the **Run JSONata Expression** play button in a `.jsonata` editor: it restores all three panes around that file. **JSONata: Evaluate Now** (`Ctrl+Alt+Enter`) does the same.
 * **The panes follow what you open.** While the Exerciser is open, any JSON file you open (for example from the Explorer) is moved into the left pane and becomes the input; any `.jsonata` file is moved into the top-right pane and becomes the expression. Switch off with `jsonataExerciser.followEditors`. Your own files are never auto-saved; scratch documents never prompt for saving.
 * **`.jsonata` files remember their input.** **JSONata: Bind Input JSON to Expression File...** (also in the context menu) links an expression to a JSON file, optionally as a header such as `/* input: ./samples/order.json */` that travels with the file in git.
+* **Saving:** the scratch `expression.jsonata` / `input.json` panes exist only inside VS Code. Press `Ctrl+S` (or run **JSONata: Save Scratch Expression/Input to File...**) to save one as a real file; the Exerciser then continues with that file. Real files save normally.
 * **JSONata: Switch Back to Scratch Input/Expression** returns to the temporary documents. **JSONata: Open Exerciser with Existing Files...** lets you pick both files from dialogs.
 
 Any `*.jsonata` file also gets highlighting, validation, IntelliSense and formatting on its own.

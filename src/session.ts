@@ -250,6 +250,35 @@ export class SessionManager implements vscode.Disposable {
       });
   }
 
+  /**
+   * Scratch documents live in memory only. This writes one to a real file (Save dialog) and links the
+   * Exerciser to that file, so Ctrl+S / Save As behave as users expect.
+   */
+  async saveScratchAs(uri?: vscode.Uri): Promise<void> {
+    const target = uri ?? vscode.window.activeTextEditor?.document.uri;
+    if (!target || !this.isScratch(target)) {
+      await vscode.commands.executeCommand('workbench.action.files.save');
+      return;
+    }
+    const isExpr = target.toString() === this.exprUriDefault.toString();
+    const root = vscode.workspace.workspaceFolders?.[0]?.uri;
+    const dest = await vscode.window.showSaveDialog({
+      title: isExpr ? 'Save JSONata expression as' : 'Save input JSON as',
+      defaultUri: root ? vscode.Uri.joinPath(root, isExpr ? 'expression.jsonata' : 'input.json') : undefined,
+      filters: isExpr ? { JSONata: ['jsonata'] } : { JSON: ['json'] },
+      saveLabel: 'Save'
+    });
+    if (!dest) return;
+    try {
+      await vscode.workspace.fs.writeFile(dest, new TextEncoder().encode(await this.getText(target)));
+    } catch (e: any) {
+      void vscode.window.showErrorMessage(`Could not save ${path.basename(dest.path)}: ${e.message ?? e}`);
+      return;
+    }
+    await this.link(isExpr ? { exprUri: dest, inputUri: this.inputUri } : { inputUri: dest, exprUri: this.exprUri });
+    void vscode.window.setStatusBarMessage(`Saved ${path.basename(dest.path)} and linked it to the Exerciser`, 3000);
+  }
+
   /** Back to the virtual scratch input/expression. */
   async resetScratch(): Promise<void> {
     await this.open({ inputUri: this.inputUriDefault, exprUri: this.exprUriDefault });
