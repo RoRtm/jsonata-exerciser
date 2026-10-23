@@ -201,3 +201,36 @@ describe('structure summary for AI prompts', () => {
     assert.ok(CHEATSHEET.length > 500);
   });
 });
+
+describe('formatter object layout', () => {
+  const src = `(
+  $factorial := function($x) { $x <= 1 ? 1 : $x * $factorial($x - 1) };
+  {
+    "n": n,
+     "factorial": $factorial(n),
+    "fibonacci": $map([0..n], $fib)
+  }
+)`;
+  const small = '{ "a": 1 }';
+  test('auto collapses objects that fit (plugin default)', async () => {
+    const out = await formatJsonata(src, { objectLayout: 'auto' });
+    assert.match(out, /\{ "n": n, "factorial": \$factorial\(n\), "fibonacci": \$map\(\[0\.\.n\], \$fib\) \}/);
+  });
+  test('preserve keeps a multi-line object multi-line, but collapses single-line ones', async () => {
+    const out = await formatJsonata(src, { objectLayout: 'preserve' });
+    assert.match(out, /\{\n\s+"n": n,\n\s+"factorial": \$factorial\(n\),\n\s+"fibonacci": \$map\(\[0\.\.n\], \$fib\)\n\s+\}/);
+    assert.ok(sameAst(src, out));
+    assert.equal(await formatJsonata(small, { objectLayout: 'preserve' }), small);
+  });
+  test('expanded always breaks every key onto its own line', async () => {
+    const out = await formatJsonata(small, { objectLayout: 'expanded' });
+    assert.equal(out, '{\n  "a": 1\n}');
+    assert.ok(sameAst(small, out));
+  });
+  test('group-by objects follow the same rules', async () => {
+    const g = 'items{\n  k: $sum(v)\n}';
+    const out = await formatJsonata(g, { objectLayout: 'preserve' });
+    assert.match(out, /\{\n\s+k: \$sum\(v\)\n\}/);
+    assert.equal(await formatJsonata('items{ k: $sum(v) }', { objectLayout: 'preserve' }), 'items{ k: $sum(v) }');
+  });
+});

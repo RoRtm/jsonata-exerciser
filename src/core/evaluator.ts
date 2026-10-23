@@ -96,6 +96,11 @@ export class Evaluator {
     });
   }
 
+  /** Starts the worker thread in the background so the first real evaluation is instant. */
+  warmUp(): void {
+    void this.evaluate({ expression: '1', timeoutMs: 15000 });
+  }
+
   dispose(): void {
     this.killWorker('cancelled');
   }

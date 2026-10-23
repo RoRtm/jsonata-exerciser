@@ -1,5 +1,21 @@
 # Changelog
 
+## 1.3.1
+
+- Formatter: new setting `jsonataExerciser.format.objectLayout` (`preserve` default, `expanded`, `auto`). Objects you wrote on several lines are no longer collapsed onto one line.
+
+## 1.3.0
+
+- Five new, more complex demos (8-12): sales report (helper functions, grouping, ranking, tiers), joining two datasets (lookup, orphans, group by), recursive tree walk with `**`, event-log statistics (per-day stats, busiest hour, running total with `$reduce`, weekday formatting) and data cleansing (normalize, validate, de-duplicate). The error demo is now number 13.
+
+## 1.2.6
+
+- Fix: restarting VS Code with the Exerciser panes open showed "The editor could not be opened due to an unexpected error". The scratch input/expression and the result pane are now real (virtual) file systems that wake the extension up on restore, scratch files reopen with their last content, and the Exerciser resumes live evaluation automatically. The result pane is now `result.jsonc`.
+
+## 1.2.5
+
+- Faster, more visible start: the extension now activates as soon as a JSON / JSONC / JSONata editor is restored (not only after VS Code finished starting), a **JSONata** status bar entry shows when it is ready, opening the Exerciser shows a progress spinner, and the evaluator thread is started in the background.
+
 ## 1.2.4
 
 - The scratch `expression.jsonata` / `input.json` panes live in memory only, so Ctrl+S appeared to do nothing. Ctrl+S / Save As on a scratch pane now opens a Save dialog, writes a real file and links the Exerciser to it (command **JSONata: Save Scratch Expression/Input to File...**).

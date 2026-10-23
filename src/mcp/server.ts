@@ -81,11 +81,15 @@ tool(
   {
     title: 'Format JSONata',
     description: 'Pretty-print a JSONata expression. The result is verified to parse to the identical AST.',
-    inputSchema: { expression: z.string(), print_width: z.number().int().min(20).max(300).optional() }
+    inputSchema: {
+      expression: z.string(),
+      print_width: z.number().int().min(20).max(300).optional(),
+      object_layout: z.enum(['auto', 'preserve', 'expanded']).optional().describe('preserve (default): keep objects multi-line if written so; expanded: always one key per line; auto: collapse if it fits')
+    }
   },
-  async ({ expression, print_width }) => {
+  async ({ expression, print_width, object_layout }) => {
     try {
-      return text(await formatJsonata(expression, { printWidth: print_width }));
+      return text(await formatJsonata(expression, { printWidth: print_width, objectLayout: object_layout }));
     } catch (e: any) {
       return text(String(e.message ?? e), true);
     }

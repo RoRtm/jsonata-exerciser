@@ -216,6 +216,7 @@ export function registerProviders(session: SessionManager): vscode.Disposable[] 
     const text = doc.getText();
     const formatted = await formatJsonata(text, {
       printWidth: cfg.get<number>('format.printWidth', 80),
+      objectLayout: cfg.get<'auto' | 'preserve' | 'expanded'>('format.objectLayout', 'preserve'),
       tabWidth: options?.tabSize ?? 2,
       useTabs: options ? !options.insertSpaces : false
     });

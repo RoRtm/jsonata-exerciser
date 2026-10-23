@@ -6,7 +6,7 @@ import { parseInputComment, withInputComment } from './core/bindings';
 import { MemFs, ResultContent } from './memfs';
 import type { DiagnosticsManager } from './providers';
 
-const STATE_KEY = 'jsonataExerciser.lastSession';
+export const STATE_KEY = 'jsonataExerciser.lastSession';
 const BINDINGS_KEY = 'jsonataExerciser.bindings';
 
 export interface SessionSnapshot {
@@ -59,6 +59,8 @@ export class SessionManager implements vscode.Disposable {
   ) {
     this.status = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 50);
     this.status.command = 'jsonataExerciser.open';
+    this.status.text = '$(json) JSONata';
+    this.status.tooltip = 'Open JSONata Exerciser';
     this.disposables.push(
       this.status,
       vscode.workspace.onDidChangeTextDocument((e) => {
@@ -67,8 +69,22 @@ export class SessionManager implements vscode.Disposable {
       vscode.workspace.onDidChangeConfiguration((e) => {
         if (e.affectsConfiguration('jsonataExerciser')) this.schedule();
       }),
-      vscode.window.onDidChangeActiveTextEditor((ed) => void this.followEditor(ed))
+      vscode.window.onDidChangeActiveTextEditor((ed) => {
+        this.updateStatusVisibility();
+        void this.followEditor(ed);
+      })
     );
+    this.updateStatusVisibility();
+    // Start the evaluator thread in the background so the first evaluation is instant.
+    const warm = setTimeout(() => this.evaluator.warmUp(), 500);
+    this.disposables.push({ dispose: () => clearTimeout(warm) });
+  }
+
+  /** The status bar entry doubles as a "ready" signal: it appears as soon as the extension is active. */
+  private updateStatusVisibility(): void {
+    const lang = vscode.window.activeTextEditor?.document.languageId;
+    if (this.active || lang === 'json' || lang === 'jsonc' || lang === 'jsonata') this.status.show();
+    else this.status.hide();
   }
 
   isSessionUri(uri: vscode.Uri): boolean {
@@ -204,6 +220,20 @@ export class SessionManager implements vscode.Disposable {
   }
 
   async open(opts: { demo?: Demo; inputUri?: vscode.Uri; exprUri?: vscode.Uri } = {}): Promise<void> {
+    this.status.text = '$(sync~spin) JSONata: opening...';
+    this.status.show();
+    try {
+      await vscode.window.withProgress(
+        { location: vscode.ProgressLocation.Window, title: 'JSONata Exerciser: opening...' },
+        () => this.openCore(opts)
+      );
+    } finally {
+      if (!this._last) this.updateStatus(undefined);
+      this.updateStatusVisibility();
+    }
+  }
+
+  private async openCore(opts: { demo?: Demo; inputUri?: vscode.Uri; exprUri?: vscode.Uri }): Promise<void> {
     const wasActive = this.active;
 
     if (opts.demo) {
@@ -279,6 +309,25 @@ export class SessionManager implements vscode.Disposable {
     void vscode.window.setStatusBarMessage(`Saved ${path.basename(dest.path)} and linked it to the Exerciser`, 3000);
   }
 
+  /**
+   * After a VS Code restart the editor tabs come back but the session is gone. If the result tab was
+   * restored, re-attach to whatever input / expression tabs are showing and resume live evaluation.
+   */
+  async resumeFromTabs(): Promise<void> {
+    if (this.active) return;
+    const groups = vscode.window.tabGroups.all;
+    const hadResult = groups.some((g) =>
+      g.tabs.some((t) => t.input instanceof vscode.TabInputText && t.input.uri.scheme === ResultContent.scheme)
+    );
+    if (!hadResult) return;
+    const pick = (col: vscode.ViewColumn, kind: Kind): vscode.Uri | undefined => {
+      const tab = groups.find((g) => g.viewColumn === col)?.activeTab;
+      if (tab?.input instanceof vscode.TabInputText && this.kindOf(tab.input.uri) === kind) return tab.input.uri;
+      return undefined;
+    };
+    await this.open({ inputUri: pick(vscode.ViewColumn.One, 'json'), exprUri: pick(vscode.ViewColumn.Two, 'expr') });
+  }
+
   /** Back to the virtual scratch input/expression. */
   async resetScratch(): Promise<void> {
     await this.open({ inputUri: this.inputUriDefault, exprUri: this.exprUriDefault });
@@ -312,7 +361,7 @@ export class SessionManager implements vscode.Disposable {
     // Always (re)show all three panes so a closed editor comes back.
     await vscode.window.showTextDocument(inputDoc, { viewColumn: vscode.ViewColumn.One, preserveFocus: true, preview: false });
     await vscode.window.showTextDocument(resultDoc, { viewColumn: vscode.ViewColumn.Three, preserveFocus: true, preview: false });
-    if (resultDoc.languageId !== 'jsonc') await vscode.languages.setTextDocumentLanguage(resultDoc, 'jsonc');
+    if (resultDoc.languageId !== 'jsonc') await vscode.languages.setTextDocumentLanguage(resultDoc, 'jsonc').then(undefined, () => undefined);
     await vscode.window.showTextDocument(exprDoc, { viewColumn: vscode.ViewColumn.Two, preview: false });
   }
 
@@ -478,7 +527,7 @@ export class SessionManager implements vscode.Disposable {
   private updateStatus(r: EvalResult | undefined): void {
     const links = this.linkLabel();
     if (!r) {
-      this.status.text = '$(symbol-event) JSONata';
+      this.status.text = '$(json) JSONata';
       this.status.tooltip = `JSONata Exerciser\n${links}`;
       this.status.backgroundColor = undefined;
       return;

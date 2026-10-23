@@ -16,7 +16,7 @@
 | **Works with your files** | Right-click any `.json` / `.jsonata` file and choose **Open in JSONata Exerciser**. The panes follow the files you open, and `.jsonata` files remember their input JSON. |
 | **Real editor support** | Syntax highlighting, validation with exact error positions, completions for all `$functions` **and for the field names in your JSON**, signature help, hover docs, snippets. |
 | **Formatter** | Format Document (`Shift+Alt+F`) for JSONata. Every result is verified to parse to the identical expression before it is applied. |
-| **Demos** | Eight ready-made examples (paths, grouping, higher-order functions, regex and dates, recursion, and a broken expression to practice debugging). |
+| **Demos** | Thirteen ready-made examples, from "Hello" to complex ones: sales report with ranking and tiers, joining two datasets, recursive tree walking, event-log statistics with running totals, data cleansing and de-duplication, plus a broken expression to practice debugging. |
 | **Online help** | Searchable doc pages and function reference, `Shift+F1` on any `$function`, hover links. |
 | **GitHub Copilot** | `@jsonata` chat participant (`/write`, `/explain`, `/fix`) and agent-mode tools that read your data, evaluate expressions and verify their answers. |
 | **Claude** | The same tools as an MCP server for Claude Code, Claude Desktop, Cursor and others. |
@@ -142,6 +142,7 @@ Open the Command Palette (`Ctrl+Shift+P`) and type `JSONata` to find the extensi
 | `jsonataExerciser.debounceMs` | `150` | Delay after the last keystroke |
 | `jsonataExerciser.evaluationTimeoutMs` | `5000` | Abort long-running evaluations |
 | `jsonataExerciser.format.printWidth` | `80` | Formatter line width |
+| `jsonataExerciser.format.objectLayout` | `preserve` | Object constructors `{ ... }`: `preserve` keeps them multi-line if you wrote a line break after `{`, `expanded` always breaks every key onto its own line, `auto` collapses objects that fit the line width |
 | `jsonataExerciser.intellisense.fieldSuggestions` | `true` | Suggest field names from the input JSON |
 | `jsonataExerciser.ai.registerMcpServerInVsCode` | `false` | Also register the MCP server in VS Code |
 

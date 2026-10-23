@@ -1,9 +1,9 @@
 import * as vscode from 'vscode';
-import { DEMOS } from './core/demos';
+import { DEMOS, demoInputText } from './core/demos';
 import { FUNCTION_BY_NAME, HELP_LINKS } from './core/functions';
 import { MemFs, ResultContent } from './memfs';
 import { DiagnosticsManager, registerProviders } from './providers';
-import { SessionManager } from './session';
+import { SessionManager, STATE_KEY } from './session';
 import { registerAi, mcpConfigText } from './ai';
 import { addAiInstructions } from './instructions';
 
@@ -13,9 +13,17 @@ export function activate(ctx: vscode.ExtensionContext): void {
   const diag = new DiagnosticsManager();
   const session = new SessionManager(ctx, memfs, resultContent, diag);
 
+  // Scratch files vanish with the process; restored editor tabs get the last saved content instead of an error.
+  memfs.fallback = (uri) => {
+    const saved = ctx.globalState.get<{ input?: string; expression?: string }>(STATE_KEY);
+    if (uri.path === '/input.json') return saved?.input ?? demoInputText(DEMOS[0]);
+    if (uri.path === '/expression.jsonata') return saved?.expression ?? DEMOS[0].expression;
+    return undefined;
+  };
+
   ctx.subscriptions.push(
     vscode.workspace.registerFileSystemProvider(MemFs.scheme, memfs, { isCaseSensitive: true }),
-    vscode.workspace.registerTextDocumentContentProvider(ResultContent.scheme, resultContent),
+    vscode.workspace.registerFileSystemProvider(ResultContent.scheme, resultContent, { isCaseSensitive: true, isReadonly: true }),
     diag,
     session,
     ...registerProviders(session),
@@ -135,6 +143,9 @@ export function activate(ctx: vscode.ExtensionContext): void {
     const doc = vscode.workspace.textDocuments.find((d) => d.uri.toString() === session.exprUri.toString());
     if (doc) await vscode.window.showTextDocument(doc, { preserveFocus: false });
   });
+
+  // Restart with the Exerciser panes open: resume live evaluation once the tabs are restored.
+  setTimeout(() => void session.resumeFromTabs().catch(() => undefined), 800);
 
   // First-run hint
   if (!ctx.globalState.get<boolean>('jsonataExerciser.welcomed')) {
