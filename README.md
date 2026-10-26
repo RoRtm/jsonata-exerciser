@@ -16,6 +16,7 @@
 | **Works with your files** | Right-click any `.json` / `.jsonata` file and choose **Open in JSONata Exerciser**. The panes follow the files you open, and `.jsonata` files remember their input JSON. |
 | **Real editor support** | Syntax highlighting, validation with exact error positions, completions for all `$functions` **and for the field names in your JSON**, signature help, hover docs, snippets. |
 | **Step-through inspection** | Put the cursor on any part of an expression and see what it evaluates to *in context*, as an inline hint and hover, with a per-step breakdown for paths (`orders` → `orders.items` → `orders.items.price`). Shows when a part is never reached. |
+| **Performance profiler** | Finds the slow parts of an expression: a heat map in the editor, a ranked report (own time, calls, µs per call) and concrete suggestions, for example replacing a filter inside a loop by an index with `$lookup`. Can simulate larger data by repeating array items. |
 | **Formatter** | Format Document (`Shift+Alt+F`) for JSONata. Every result is verified to parse to the identical expression before it is applied. |
 | **Demos** | Thirteen ready-made examples, from "Hello" to complex ones: sales report with ranking and tiers, joining two datasets, recursive tree walking, event-log statistics with running totals, data cleansing and de-duplication, plus a broken expression to practice debugging. |
 | **Online help** | Searchable doc pages and function reference, `Shift+F1` on any `$function`, hover links. |
@@ -67,6 +68,23 @@ $sum(orders.items.(price * qty))
 
 How it works: the inspected part `x` is temporarily replaced by `$__probe(x)`, a function that records the values it sees and returns them unchanged, so the rest of the expression behaves exactly as before. It uses only the official `jsonata` library and runs in the same local worker thread as the Exerciser.
 
+## Performance profiler
+
+Is an expression slow on big data? Run **JSONata: Profile Expression (find slow parts)** (also in the editor context menu).
+
+![JSONata profiler showing the editor heatmap, optimization suggestions, and time breakdown](images/jsonata-profiler.png)
+
+1. Choose the input: the current data, or **Arrays ×10 / ×100 / ×1000**, which repeats the items of every array to simulate larger input. Slow spots often only show up with more data.
+2. The expression is measured locally and you get:
+   * a **heat map** in the expression editor (the more orange, the more of the total time is spent in that part) with an inline hint such as `⏱ 99% · 6979 ms · ×1500` at the end of the line, and hover details for every part,
+   * a **report** next to the editor with a tree *Where the time goes* (share of the total including the parts inside, evaluation counts) and a table of the hot spots by own time (without the parts inside), with total time, number of evaluations and µs per evaluation. Click a line to jump to that part,
+   * **suggestions** for common problems: a filter inside a loop that behaves quadratically (use an index: `$idx := items{ id: $ }` and `$lookup($idx, key)`), `$append` inside `$reduce`, `**` over a large document, sorting inside a loop, `$eval` in a loop.
+3. Change the expression and run it again to see the effect. The highlights disappear as soon as you edit the text.
+
+How it works: the expression is rewritten once so that every part reports when it starts and ends; one run then yields the time and count for all parts. Time that belongs to a part itself is its total minus the parts inside it. The measuring itself slows the run down in proportion to how often each part is evaluated; that overhead is estimated from the run, removed, and the own times are scaled to add up to the plain evaluation time. Treat the numbers as good estimates and use the percentages to compare parts, not as exact values. Profiling uses only the official `jsonata` library in the local worker thread.
+
+The same capability is available to AI assistants as `#jsonataProfile` (MCP: `jsonata_profile`) with an optional `scaleArrays` factor, so Copilot and Claude can find and fix the hot spot of a slow expression with you.
+
 ## Editor features
 
 | Feature | Details |
@@ -91,7 +109,7 @@ Built-in function completions include their signatures:
 Requires GitHub Copilot Chat. Works with whichever model you select, including Claude models offered through Copilot.
 
 * **`@jsonata` chat participant** with `/write`, `/explain` and `/fix`. It sees your data and expression, answers with a `jsonata` code block, then **verifies the proposed expression locally** against your input and offers an **Apply to Exerciser** button.
-* **Agent mode tools** (reference them as `#jsonataEvaluate`, `#jsonataValidate`, `#jsonataInspect`, `#jsonataInputStructure`, `#jsonataGuide`, `#jsonataExerciserState`, `#jsonataExerciserUpdate`, or let the model pick): evaluate and validate expressions against real data, read your Exerciser (expression, input, result, error), get a compact outline of a JSON file, and, after confirmation, update the Exerciser.
+* **Agent mode tools** (reference them as `#jsonataEvaluate`, `#jsonataValidate`, `#jsonataInspect`, `#jsonataProfile`, `#jsonataInputStructure`, `#jsonataGuide`, `#jsonataExerciserState`, `#jsonataExerciserUpdate`, or let the model pick): evaluate and validate expressions against real data, read your Exerciser (expression, input, result, error), get a compact outline of a JSON file, and, after confirmation, update the Exerciser.
 
 For example, ask for product names prefixed with their order IDs as keys and prices as values. Copilot can read the Exerciser input and verify the expression against it:
 
@@ -122,7 +140,7 @@ AI answers can be wrong. The local check catches syntax errors and shows the rea
 
 ## Claude
 
-Any Claude surface that supports MCP can use the same tools through the bundled stdio MCP server (`dist/mcp-server.js`, built with the official MCP SDK). Tools: `jsonata_evaluate`, `jsonata_inspect`, `jsonata_validate`, `jsonata_format`, `jsonata_function_help`, `jsonata_describe_input`, `jsonata_guide`.
+Any Claude surface that supports MCP can use the same tools through the bundled stdio MCP server (`dist/mcp-server.js`, built with the official MCP SDK). Tools: `jsonata_evaluate`, `jsonata_inspect`, `jsonata_profile`, `jsonata_validate`, `jsonata_format`, `jsonata_function_help`, `jsonata_describe_input`, `jsonata_guide`.
 
 1. Run **JSONata: Copy MCP Server Config (Claude Code / Claude Desktop)** to copy ready-made snippets with the correct absolute path.
 2. **Claude Code** (CLI or VS Code extension): paste `claude mcp add jsonata -- node "<path>/mcp-server.js"` in a terminal, or put the `mcpServers` JSON into a project `.mcp.json`.
@@ -147,6 +165,8 @@ Open the Command Palette (`Ctrl+Shift+P`) and type `JSONata` to find the extensi
 | Bind Input JSON to Expression File... | Right-click a `.jsonata` file |
 | Switch Back to Scratch Input/Expression | |
 | Evaluate Now | `Ctrl+Alt+Enter` (`Cmd+Alt+Enter` on macOS) |
+| Profile Expression (find slow parts) | Editor context menu |
+| Clear Profile Highlights | |
 | Inspect Value at Cursor / Selection | `Ctrl+Alt+J` (`Cmd+Alt+J`), editor context menu |
 | Inspect Larger Expression | `Ctrl+Alt+Shift+J` |
 | Toggle Live Value Inspection | |
@@ -165,6 +185,7 @@ Open the Command Palette (`Ctrl+Shift+P`) and type `JSONata` to find the extensi
 | `jsonataExerciser.followEditors` | `true` | JSON / `.jsonata` files you open move into the input / expression pane |
 | `jsonataExerciser.inspect.live` | `true` | Show the value of the part under the cursor as an inline hint |
 | `jsonataExerciser.inspect.maxLength` | `80` | Maximum length of the inline hint |
+| `jsonataExerciser.profile.timeoutMs` | `120000` | Abort profiling after this many milliseconds |
 | `jsonataExerciser.autoEvaluate` | `true` | Evaluate while typing |
 | `jsonataExerciser.debounceMs` | `150` | Delay after the last keystroke |
 | `jsonataExerciser.evaluationTimeoutMs` | `5000` | Abort long-running evaluations |

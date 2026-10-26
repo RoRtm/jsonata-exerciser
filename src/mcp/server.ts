@@ -11,6 +11,7 @@ import { formatJsonata } from '../core/format';
 import { FUNCTIONS, FUNCTION_BY_NAME } from '../core/functions';
 import { describeStructure } from '../core/schema';
 import { inspectPart } from '../core/inspectpart';
+import { formatProfileReport, scaleArrays } from '../core/profile';
 import { CHEATSHEET, DIRECTIVES } from '../core/cheatsheet';
 
 const evaluator = new Evaluator();
@@ -138,6 +139,35 @@ tool(
     if (expression === undefined) return text('Provide `expression` or `expression_file`.', true);
     const r = await inspectPart(evaluator, { expression, part, occurrence, input });
     return text(r.text, r.isError);
+  }
+);
+
+tool(
+  'jsonata_profile',
+  {
+    title: 'Profile a JSONata expression',
+    description:
+      'Performance profiler: measures which parts of an expression take the most time and how often they run, and suggests fixes (e.g. quadratic filters inside loops). Use `scale_arrays` (e.g. 100) to repeat array items and simulate larger data.',
+    inputSchema: {
+      expression: z.string().optional(),
+      expression_file: z.string().optional(),
+      input: z.string().optional(),
+      input_file: z.string().optional(),
+      scale_arrays: z.number().int().min(1).max(10000).optional()
+    }
+  },
+  async ({ expression, expression_file, input, input_file, scale_arrays }) => {
+    try {
+      if (expression === undefined && expression_file) expression = await fs.readFile(expression_file, 'utf8');
+      if (input === undefined && input_file) input = await fs.readFile(input_file, 'utf8');
+      if (input !== undefined && scale_arrays && scale_arrays > 1) input = JSON.stringify(scaleArrays(JSON.parse(input), scale_arrays));
+    } catch (e: any) {
+      return text(`Cannot read or parse input: ${e.message}`, true);
+    }
+    if (expression === undefined) return text('Provide `expression` or `expression_file`.', true);
+    const r = await evaluator.evaluate({ expression, input, profile: {}, timeoutMs: 120000 });
+    if (r.status === 'profile') return text(formatProfileReport(expression, r.result), !!r.result.error);
+    return text(describeResult(r), r.status === 'error' || r.status === 'timeout');
   }
 );
 

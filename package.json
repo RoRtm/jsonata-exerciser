@@ -2,7 +2,7 @@
   "name": "jsonata-exerciser",
   "displayName": "JSONata Exerciser",
   "description": "Local, real-time JSONata playground and debugger for VS Code: live output, IntelliSense, validation, formatter, demos, online help and Copilot / Claude integration.",
-  "version": "1.4.0",
+  "version": "1.5.0",
   "publisher": "ro-rtm",
   "license": "MIT",
   "icon": "images/icon.png",
@@ -194,6 +194,16 @@
         "command": "jsonataExerciser.inspectToggleLive",
         "title": "Toggle Live Value Inspection",
         "category": "JSONata"
+      },
+      {
+        "command": "jsonataExerciser.profile",
+        "title": "Profile Expression (find slow parts)",
+        "category": "JSONata"
+      },
+      {
+        "command": "jsonataExerciser.profileClear",
+        "title": "Clear Profile Highlights",
+        "category": "JSONata"
       }
     ],
     "keybindings": [
@@ -283,6 +293,11 @@
           "command": "jsonataExerciser.inspect",
           "when": "resourceLangId == jsonata && editorTextFocus",
           "group": "navigation@52"
+        },
+        {
+          "command": "jsonataExerciser.profile",
+          "when": "resourceLangId == jsonata && editorTextFocus",
+          "group": "navigation@53"
         }
       ],
       "editor/title/context": [
@@ -366,6 +381,12 @@
           "default": 80,
           "minimum": 20,
           "description": "Maximum length of the inline value hint."
+        },
+        "jsonataExerciser.profile.timeoutMs": {
+          "type": "number",
+          "default": 120000,
+          "minimum": 1000,
+          "description": "Abort profiling after this many milliseconds."
         }
       }
     },
@@ -470,6 +491,44 @@
           "required": [
             "part"
           ]
+        }
+      },
+      {
+        "name": "jsonata_profile",
+        "toolReferenceName": "jsonataProfile",
+        "displayName": "Profile a JSONata expression",
+        "userDescription": "Find the slow parts of a JSONata expression.",
+        "modelDescription": "Performance profiler for JSONata: measures which parts of an expression take the most time and how often each part is evaluated, and suggests fixes such as replacing a filter inside a loop (quadratic) by an index with $lookup. Use it when an expression is slow on large data. Set `scaleArrays` (for example 100) to repeat array items and simulate bigger input. Pass data inline (`input`) or by path (`inputFile`).",
+        "canBeReferencedInPrompt": true,
+        "icon": "$(dashboard)",
+        "tags": [
+          "jsonata",
+          "performance"
+        ],
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "expression": {
+              "type": "string",
+              "description": "The JSONata expression."
+            },
+            "expressionFile": {
+              "type": "string",
+              "description": "Path of a .jsonata file instead of `expression`."
+            },
+            "input": {
+              "type": "string",
+              "description": "Input JSON text."
+            },
+            "inputFile": {
+              "type": "string",
+              "description": "Path of a JSON file as input."
+            },
+            "scaleArrays": {
+              "type": "number",
+              "description": "Repeat the items of every array this many times to simulate larger data (default 1)."
+            }
+          }
         }
       },
       {

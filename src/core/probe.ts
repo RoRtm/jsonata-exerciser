@@ -117,7 +117,7 @@ function matchBrackets(toks: Tok[]): { open2close: Map<number, number>; close2op
  * Candidate sub-expressions around `offset`, smallest first. Every candidate is validated with the
  * official parser. Repeated "expand" simply walks this list.
  */
-export function candidateSpans(text: string, offset: number): Span[] {
+function rawSpans(text: string, offset: number): Span[] {
   const toks = tokenize(text);
   if (toks.length === 0) return [];
   const { open2close, close2open } = matchBrackets(toks);
@@ -210,7 +210,8 @@ export function candidateSpans(text: string, offset: number): Span[] {
       }
       add(innerStart, innerEnd);
     }
-    add(toks[o].start, toks[c].end);
+    // a bare (...) / [...] / {...} that is the argument list, predicate or group of something is not an expression of its own
+    if (!(o > 0 && isOperandEnd(o - 1))) add(toks[o].start, toks[c].end);
     const first = extendLeft(o > 0 && isOperandEnd(o - 1) ? startOfOperandEndingAt(o - 1) : o);
     add(toks[first].start, toks[c].end);
   }
@@ -218,16 +219,60 @@ export function candidateSpans(text: string, offset: number): Span[] {
   // 3. the whole expression
   add(toks[0].start, toks[toks.length - 1].end);
 
+  // Spans that cannot be replaced by a function call without changing what they mean:
+  //  - the right side of `~>` (an implicit-argument call such as `$uppercase()`),
+  //  - something directly followed by `(` (e.g. `a.$f` of `a.$f(x)`: the call target),
+  //  - the tail of a path that ends in a group-by `{...}` (group-by applies to the whole path).
+  const semanticOk = (s: Span): boolean => {
+    let prev = -1;
+    let next = -1;
+    for (let k = 0; k < toks.length; k++) {
+      if (toks[k].end <= s.start) prev = k;
+      if (next < 0 && toks[k].start >= s.end) next = k;
+    }
+    if (prev >= 0 && toks[prev].text === '~>') return false;
+    if (next >= 0 && toks[next].kind === 'punct' && toks[next].text === '(') return false;
+    if (prev >= 0 && toks[prev].text === '.') {
+      const last = toks.findIndex((t) => t.end === s.end);
+      if (last >= 0 && toks[last].text === '}') {
+        const open = close2open.get(last);
+        if (open !== undefined && open > 0 && isOperandEnd(open - 1)) return false;
+      }
+    }
+    return true;
+  };
+
   const seen = new Set<string>();
-  return raw
-    .filter((s) => {
-      const key = `${s.start}:${s.end}`;
-      if (seen.has(key)) return false;
-      seen.add(key);
-      return true;
-    })
+  return raw.filter((s) => {
+    const key = `${s.start}:${s.end}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return semanticOk(s);
+  });
+}
+
+export function candidateSpans(text: string, offset: number): Span[] {
+  return rawSpans(text, offset)
     .sort((a, b) => a.end - a.start - (b.end - b.start))
     .filter((s) => isValidSpan(text, s));
+}
+
+/** Every inspectable sub-expression of the text (used by the profiler). */
+export function allSpans(text: string): Span[] {
+  const toks = tokenize(text);
+  const map = new Map<string, Span>();
+  for (const t of toks) {
+    for (const off of [t.start, t.end]) {
+      for (const s of rawSpans(text, Math.min(off, text.length))) map.set(`${s.start}:${s.end}`, s);
+    }
+  }
+  return [...map.values()]
+    .filter((s) => {
+      const sub = text.slice(s.start, s.end);
+      return !/^(?:"(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*'|[0-9][0-9.eE+-]*)$/.test(sub); // plain literals are not worth timing
+    })
+    .filter((s) => isValidSpan(text, s))
+    .sort((a, b) => a.start - b.start || b.end - a.end);
 }
 
 /**

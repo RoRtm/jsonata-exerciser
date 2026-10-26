@@ -3,6 +3,7 @@
 import { parentPort } from 'node:worker_threads';
 import jsonata from 'jsonata';
 import { PROBE_FN, Span, ProbeValue, wrapSpan } from './probe';
+import { profileExpression, ProfileOptions, ProfileResult } from './profile';
 
 export interface WorkerRequest {
   id: number;
@@ -10,9 +11,12 @@ export interface WorkerRequest {
   input?: string; // JSON text; undefined/blank => no input
   /** When set, evaluates the expression once per span with a value probe at that span. */
   probes?: Span[];
+  /** When set, profiles the expression (times its parts) instead of just evaluating it. */
+  profile?: ProfileOptions;
 }
 
 export type WorkerResponse =
+  | { id: number; status: 'profile'; result: ProfileResult; ms: number }
   | { id: number; status: 'probe'; results: ProbeValue[]; ms: number }
   | { id: number; status: 'ok'; text: string; ms: number }
   | { id: number; status: 'empty'; ms: number }
@@ -45,6 +49,10 @@ parentPort!.on('message', async (req: WorkerRequest) => {
     } catch (err: any) {
       return reply({ status: 'error', phase: 'input', error: plainError(err) });
     }
+  }
+
+  if (req.profile) {
+    return reply({ status: 'profile', result: await profileExpression(req.expression, data, req.profile) });
   }
 
   if (req.probes) {

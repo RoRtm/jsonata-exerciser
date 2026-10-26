@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.5.0
+
+- **Performance profiler:** *JSONata: Profile Expression (find slow parts)* measures which parts of an expression take the most time. Heat map and inline hints in the editor, hover details, a clickable ranked report, suggestions for common problems (quadratic filters in loops, `$append` in `$reduce`, `**`, sorting/`$eval` in loops), and an option to simulate larger data (arrays ×10 / ×100 / ×1000).
+- New AI tool `#jsonataProfile` (MCP: `jsonata_profile`).
+- Fix: inspection no longer offers parts that cannot stand alone (the right side of `~>`, call targets, argument lists, group-by tails).
+
 ## 1.4.0
 
 - **Step-through inspection:** see what any part of an expression evaluates to in its real context. Live inline hint and hover for the part under the cursor or the selection, per-item values, a step-by-step breakdown for paths, and "not reached" detection. Commands: Inspect Value at Cursor / Selection (`Ctrl+Alt+J`), Inspect Larger Expression (`Ctrl+Alt+Shift+J`), Toggle Live Value Inspection.

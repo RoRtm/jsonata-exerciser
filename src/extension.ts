@@ -7,6 +7,7 @@ import { SessionManager, STATE_KEY } from './session';
 import { registerAi, mcpConfigText } from './ai';
 import { addAiInstructions } from './instructions';
 import { Inspector } from './inspect';
+import { Profiler } from './profiler';
 
 export function activate(ctx: vscode.ExtensionContext): void {
   const memfs = new MemFs();
@@ -14,6 +15,7 @@ export function activate(ctx: vscode.ExtensionContext): void {
   const diag = new DiagnosticsManager();
   const session = new SessionManager(ctx, memfs, resultContent, diag);
   const inspector = new Inspector(session);
+  const profiler = new Profiler(session);
 
   // Scratch files vanish with the process; restored editor tabs get the last saved content instead of an error.
   memfs.fallback = (uri) => {
@@ -29,6 +31,7 @@ export function activate(ctx: vscode.ExtensionContext): void {
     diag,
     session,
     inspector,
+    profiler,
     ...registerProviders(session),
     ...registerAi(ctx, session)
   );
@@ -128,6 +131,8 @@ export function activate(ctx: vscode.ExtensionContext): void {
     return vscode.commands.executeCommand('jsonataExerciser.openHelp');
   });
 
+  reg('jsonataExerciser.profile', () => profiler.run());
+  reg('jsonataExerciser.profileClear', () => profiler.clear());
   reg('jsonataExerciser.inspect', () => inspector.run({}));
   reg('jsonataExerciser.inspectExpand', () => inspector.run({ expand: true }));
   reg('jsonataExerciser.inspectToggleLive', () => inspector.toggleLive());

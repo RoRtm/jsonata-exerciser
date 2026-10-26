@@ -321,3 +321,50 @@ describe('inspectPart (AI tool)', () => {
     assert.equal(bad.isError, true);
   });
 });
+
+import { profileExpression, hotSpots, adviceFor, scaleArrays, formatProfileReport, timeTree } from '../src/core/profile';
+describe('profiler', () => {
+  const customers = Array.from({ length: 500 }, (_, i) => ({ id: 'C' + i, name: 'N' + i }));
+  const orders = Array.from({ length: 500 }, (_, i) => ({ id: 'O' + i, customerId: 'C' + ((i * 7) % 500), total: i % 100 }));
+  const slow = `{
+  "joined": orders.{ "id": id, "name": $$.customers[id = $$.orders[0].customerId].name },
+  "sum": $sum(orders.total)
+}`;
+  test('finds the quadratic lookup as the hot spot and suggests an index', async () => {
+    const r = await profileExpression(slow, { customers, orders });
+    assert.equal(r.error, undefined);
+    const filter = r.spans.find((sp) => slow.slice(sp.start, sp.end).startsWith('$$.customers[id = '));
+    assert.ok(filter, 'the filter part is measured');
+    assert.equal(filter!.calls, 500);
+    assert.ok(filter!.inclusiveMs / r.totalMs > 0.6, `share ${filter!.inclusiveMs / r.totalMs}`);
+    const row = timeTree(slow, r).find((x) => x.text.includes('customers[id = '));
+    assert.ok(row && row.share > 0.6);
+    assert.equal(adviceFor(slow, r).filter((a) => a.includes('filters inside a loop')).length, 1);
+    assert.ok(adviceFor(slow, r).some((a) => a.includes('$lookup')));
+    assert.match(formatProfileReport(slow, r), /Where the time goes/);
+  });
+  test('inclusive time >= own time and calls are counted per evaluation', async () => {
+    const r = await profileExpression('$sum(a.(b * 2))', { a: Array.from({ length: 50 }, (_, i) => ({ b: i })) });
+    for (const s of r.spans) assert.ok((s.selfMs ?? 0) <= s.inclusiveMs + 1e-9);
+    assert.ok(r.spans.some((s) => s.calls === 50));
+  });
+  test('every demo can be profiled with the full set of parts', async () => {
+    for (const d of DEMOS.filter((x) => !x.expectError)) {
+      const r = await profileExpression(d.expression, JSON.parse(demoInputText(d)));
+      assert.equal(r.error, undefined, d.id);
+      assert.ok(r.spans.length > 0 && !r.truncated, `${d.id}: parts=${r.spans.length}`);
+    }
+  });
+  test('an expression that fails is reported, not thrown', async () => {
+    const r = await profileExpression('a + "x"', { a: 1 });
+    assert.ok(r.error);
+  });
+  test('scaleArrays repeats items and leaves other values alone', () => {
+    assert.deepEqual(scaleArrays({ a: [1, 2], b: 'x', c: { d: [{ k: 1 }] } }, 3), {
+      a: [1, 2, 1, 2, 1, 2],
+      b: 'x',
+      c: { d: [{ k: 1 }, { k: 1 }, { k: 1 }] }
+    });
+    assert.deepEqual(scaleArrays([1], 1), [1]);
+  });
+});
