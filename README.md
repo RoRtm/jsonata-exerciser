@@ -154,8 +154,6 @@ VS Code users can alternatively enable `jsonataExerciser.ai.registerMcpServerInV
 
 Open the Command Palette (`Ctrl+Shift+P`) and type `JSONata` to find the extension's commands:
 
-![VS Code Command Palette filtered to JSONata commands, with Open Exerciser selected](images/command-pallette.png)
-
 | Command (Command Palette: "JSONata: ...") | Shortcut / where |
 | --- | --- |
 | Open Exerciser | Status bar item, title-bar icon |
