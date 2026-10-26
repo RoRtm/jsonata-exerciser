@@ -1,6 +1,7 @@
 import { Worker } from 'node:worker_threads';
 import * as path from 'node:path';
 import type { WorkerRequest, WorkerResponse } from './worker';
+import type { ProbeValue, Span } from './probe';
 
 export type EvalResult =
   | { status: 'ok'; text: string; ms: number }
@@ -11,6 +12,7 @@ export type EvalResult =
       error: { code?: string; message: string; position?: number; token?: string };
       ms: number;
     }
+  | { status: 'probe'; results: ProbeValue[]; ms: number }
   | { status: 'timeout'; ms: number }
   | { status: 'cancelled'; ms: number };
 
@@ -84,14 +86,14 @@ export class Evaluator {
     void w?.terminate();
   }
 
-  evaluate(req: { expression: string; input?: string; timeoutMs?: number }): Promise<EvalResult> {
+  evaluate(req: { expression: string; input?: string; timeoutMs?: number; probes?: Span[] }): Promise<EvalResult> {
     if (this.supersede && this.pending.size > 0) this.killWorker('cancelled');
     const timeoutMs = req.timeoutMs ?? 5000;
     const id = ++this.seq;
     return new Promise<EvalResult>((resolve) => {
       const timer = setTimeout(() => this.killWorker('timeout'), timeoutMs);
       this.pending.set(id, { resolve, timer, started: Date.now() });
-      const msg: WorkerRequest = { id, expression: req.expression, input: req.input };
+      const msg: WorkerRequest = { id, expression: req.expression, input: req.input, probes: req.probes };
       this.ensureWorker().postMessage(msg);
     });
   }
@@ -113,6 +115,8 @@ export function describeResult(r: EvalResult): string {
       return r.text;
     case 'empty':
       return '(no result: the expression evaluated to undefined)';
+    case 'probe':
+      return r.results.map((p) => p.values.join('\n')).join('\n');
     case 'timeout':
       return `Evaluation timed out after ${r.ms} ms (aborted).`;
     case 'cancelled':

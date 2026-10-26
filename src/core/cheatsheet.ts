@@ -36,7 +36,7 @@ Common mistakes
 
 export const DIRECTIVES = `Workflow for writing JSONata with the JSONata Exerciser tools:
 1. Read the user's data first: call #jsonataExerciserState (current expression, input, result) and/or #jsonataInputStructure (compact outline of the input JSON). Use the exact key names and nesting you see.
-2. Write the expression, then run it against the real input with #jsonataEvaluate. If it returns an error or an empty result, fix it and run again. Do not present an expression you have not evaluated.
+2. Write the expression, then run it against the real input with #jsonataEvaluate. If it returns an error or an empty result, find the failing part with #jsonataInspect (it shows the value of any sub-expression, per item, in context) instead of guessing, fix it and run again. Do not present an expression you have not evaluated.
 3. Only after it produces the intended output, give the final expression in ONE \`\`\`jsonata code block and show a short sample of the output.
 4. If the target output shape is unclear, ask the user for an example of the desired output instead of guessing.
 5. Use #jsonataExerciserUpdate only when the user asks you to apply the expression to their Exerciser.`;

@@ -15,6 +15,7 @@
 | **Live playground** | Three linked panes like the online [Exerciser](https://try.jsonata.org/): input JSON, expression, live result. Errors show in the result, the status bar and as squiggles in the expression. |
 | **Works with your files** | Right-click any `.json` / `.jsonata` file and choose **Open in JSONata Exerciser**. The panes follow the files you open, and `.jsonata` files remember their input JSON. |
 | **Real editor support** | Syntax highlighting, validation with exact error positions, completions for all `$functions` **and for the field names in your JSON**, signature help, hover docs, snippets. |
+| **Step-through inspection** | Put the cursor on any part of an expression and see what it evaluates to *in context*, as an inline hint and hover, with a per-step breakdown for paths (`orders` → `orders.items` → `orders.items.price`). Shows when a part is never reached. |
 | **Formatter** | Format Document (`Shift+Alt+F`) for JSONata. Every result is verified to parse to the identical expression before it is applied. |
 | **Demos** | Thirteen ready-made examples, from "Hello" to complex ones: sales report with ranking and tiers, joining two datasets, recursive tree walking, event-log statistics with running totals, data cleansing and de-duplication, plus a broken expression to practice debugging. |
 | **Online help** | Searchable doc pages and function reference, `Shift+F1` on any `$function`, hover links. |
@@ -45,6 +46,25 @@ Use the title-bar button to open the Exerciser from a JSON editor:
 
 ![JSON editor title-bar button with the Open JSONata Exerciser tooltip](images/open-exerciser.png)
 
+## Step-through inspection
+
+Debug an expression like code: move the cursor (or select a part) and see what that part evaluates to for your current input.
+
+```
+$sum(orders.items.(price * qty))
+                    ^ cursor on "price"         ▸ ×3: 2, 4, 5
+```
+
+* **Live:** with the Exerciser open, the sub-expression under the cursor is highlighted and its value shows as an inline hint at the end of the line. Hover the highlight for the full value.
+* **Per item:** parts inside a path or `$map` run once per array item; you see `×3: 2, 4, 5` instead of a single value.
+* **Step by step:** for a path such as `orders.items.price` the hover lists every step (`orders`, `orders.items`, `orders.items.price`) with its evaluation count and value, so you see exactly where it stops matching.
+* **Not reached:** if an earlier step produced nothing or a branch is not taken, the hint says so instead of showing an empty value.
+* **Select to be exact:** select any complete sub-expression to inspect precisely that text. **Inspect Larger Expression** (`Ctrl+Alt+Shift+J`) widens the inspected part step by step: `price` → `price * qty` → `orders.items.(price * qty)` → the whole expression.
+* **Commands:** **JSONata: Inspect Value at Cursor / Selection** (`Ctrl+Alt+J`, also in the editor context menu), **Inspect Larger Expression**, **Toggle Live Value Inspection** (or setting `jsonataExerciser.inspect.live`).
+* **For AI assistants:** the same capability is available as the `#jsonataInspect` tool (and MCP tool `jsonata_inspect`), so Copilot and Claude can find the failing part of an expression instead of guessing.
+
+How it works: the inspected part `x` is temporarily replaced by `$__probe(x)`, a function that records the values it sees and returns them unchanged, so the rest of the expression behaves exactly as before. It uses only the official `jsonata` library and runs in the same local worker thread as the Exerciser.
+
 ## Editor features
 
 | Feature | Details |
@@ -69,7 +89,7 @@ Built-in function completions include their signatures:
 Requires GitHub Copilot Chat. Works with whichever model you select, including Claude models offered through Copilot.
 
 * **`@jsonata` chat participant** with `/write`, `/explain` and `/fix`. It sees your data and expression, answers with a `jsonata` code block, then **verifies the proposed expression locally** against your input and offers an **Apply to Exerciser** button.
-* **Agent mode tools** (reference them as `#jsonataEvaluate`, `#jsonataValidate`, `#jsonataInputStructure`, `#jsonataGuide`, `#jsonataExerciserState`, `#jsonataExerciserUpdate`, or let the model pick): evaluate and validate expressions against real data, read your Exerciser (expression, input, result, error), get a compact outline of a JSON file, and, after confirmation, update the Exerciser.
+* **Agent mode tools** (reference them as `#jsonataEvaluate`, `#jsonataValidate`, `#jsonataInspect`, `#jsonataInputStructure`, `#jsonataGuide`, `#jsonataExerciserState`, `#jsonataExerciserUpdate`, or let the model pick): evaluate and validate expressions against real data, read your Exerciser (expression, input, result, error), get a compact outline of a JSON file, and, after confirmation, update the Exerciser.
 
 For example, ask for product names prefixed with their order IDs as keys and prices as values. Copilot can read the Exerciser input and verify the expression against it:
 
@@ -100,7 +120,7 @@ AI answers can be wrong. The local check catches syntax errors and shows the rea
 
 ## Claude
 
-Any Claude surface that supports MCP can use the same tools through the bundled stdio MCP server (`dist/mcp-server.js`, built with the official MCP SDK). Tools: `jsonata_evaluate`, `jsonata_validate`, `jsonata_format`, `jsonata_function_help`, `jsonata_describe_input`, `jsonata_guide`.
+Any Claude surface that supports MCP can use the same tools through the bundled stdio MCP server (`dist/mcp-server.js`, built with the official MCP SDK). Tools: `jsonata_evaluate`, `jsonata_inspect`, `jsonata_validate`, `jsonata_format`, `jsonata_function_help`, `jsonata_describe_input`, `jsonata_guide`.
 
 1. Run **JSONata: Copy MCP Server Config (Claude Code / Claude Desktop)** to copy ready-made snippets with the correct absolute path.
 2. **Claude Code** (CLI or VS Code extension): paste `claude mcp add jsonata -- node "<path>/mcp-server.js"` in a terminal, or put the `mcpServers` JSON into a project `.mcp.json`.
@@ -125,6 +145,9 @@ Open the Command Palette (`Ctrl+Shift+P`) and type `JSONata` to find the extensi
 | Bind Input JSON to Expression File... | Right-click a `.jsonata` file |
 | Switch Back to Scratch Input/Expression | |
 | Evaluate Now | `Ctrl+Alt+Enter` (`Cmd+Alt+Enter` on macOS) |
+| Inspect Value at Cursor / Selection | `Ctrl+Alt+J` (`Cmd+Alt+J`), editor context menu |
+| Inspect Larger Expression | `Ctrl+Alt+Shift+J` |
+| Toggle Live Value Inspection | |
 | Format Expression | `Shift+Alt+F` (Format Document) |
 | Copy Result | |
 | Open Online Help... | Title bar of `.jsonata` files |
@@ -138,6 +161,8 @@ Open the Command Palette (`Ctrl+Shift+P`) and type `JSONata` to find the extensi
 | Setting | Default | Meaning |
 | --- | --- | --- |
 | `jsonataExerciser.followEditors` | `true` | JSON / `.jsonata` files you open move into the input / expression pane |
+| `jsonataExerciser.inspect.live` | `true` | Show the value of the part under the cursor as an inline hint |
+| `jsonataExerciser.inspect.maxLength` | `80` | Maximum length of the inline hint |
 | `jsonataExerciser.autoEvaluate` | `true` | Evaluate while typing |
 | `jsonataExerciser.debounceMs` | `150` | Delay after the last keystroke |
 | `jsonataExerciser.evaluationTimeoutMs` | `5000` | Abort long-running evaluations |

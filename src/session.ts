@@ -506,6 +506,7 @@ export class SessionManager implements vscode.Disposable {
       case 'timeout':
         return `// Aborted after ${r.ms} ms (limit: jsonataExerciser.evaluationTimeoutMs). Possible endless recursion?`;
       case 'cancelled':
+      case 'probe':
         return this.result.current;
       case 'error':
         return describeResult(r)

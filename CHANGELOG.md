@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.4.0
+
+- **Step-through inspection:** see what any part of an expression evaluates to in its real context. Live inline hint and hover for the part under the cursor or the selection, per-item values, a step-by-step breakdown for paths, and "not reached" detection. Commands: Inspect Value at Cursor / Selection (`Ctrl+Alt+J`), Inspect Larger Expression (`Ctrl+Alt+Shift+J`), Toggle Live Value Inspection.
+- New AI tool `#jsonataInspect` (MCP: `jsonata_inspect`) so Copilot and Claude can debug expressions part by part; the recommended workflow mentions it.
+
 ## 1.3.1
 
 - Formatter: new setting `jsonataExerciser.format.objectLayout` (`preserve` default, `expanded`, `auto`). Objects you wrote on several lines are no longer collapsed onto one line.

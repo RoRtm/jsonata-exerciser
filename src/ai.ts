@@ -3,6 +3,7 @@ import * as path from 'node:path';
 import { Evaluator, describeResult } from './core/evaluator';
 import { analyze } from './core/analyze';
 import { describeStructure } from './core/schema';
+import { inspectPart } from './core/inspectpart';
 import { CHEATSHEET, DIRECTIVES } from './core/cheatsheet';
 import { FUNCTIONS } from './core/functions';
 import type { SessionManager } from './session';
@@ -141,6 +142,23 @@ export function registerAi(ctx: vscode.ExtensionContext, session: SessionManager
           if (expression === undefined) return toolText('Provide "expression" or "expressionFile".');
           const r = await toolEvaluator.evaluate({ expression, input, timeoutMs: timeout() });
           return toolText(describeResult(r));
+        }
+      }),
+      vscode.lm.registerTool<{ expression?: string; expressionFile?: string; part: string; occurrence?: number; input?: string; inputFile?: string }>('jsonata_inspect', {
+        prepareInvocation: () => ({ invocationMessage: 'Inspecting part of a JSONata expression' }),
+        async invoke(options) {
+          const i = options.input;
+          let expression = i.expression;
+          let input = i.input;
+          try {
+            if (expression === undefined && i.expressionFile) expression = await readFileText(i.expressionFile);
+            if (input === undefined && i.inputFile) input = await readFileText(i.inputFile);
+          } catch (e: any) {
+            return toolText(`Cannot read file: ${e.message}`);
+          }
+          if (expression === undefined) return toolText('Provide "expression" or "expressionFile".');
+          const r = await inspectPart(toolEvaluator, { expression, part: i.part, occurrence: i.occurrence, input, timeoutMs: timeout() });
+          return toolText(r.text);
         }
       }),
       vscode.lm.registerTool<{ expression: string }>('jsonata_validate', {

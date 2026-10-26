@@ -234,3 +234,90 @@ describe('formatter object layout', () => {
     assert.equal(await formatJsonata('items{ k: $sum(v) }', { objectLayout: 'preserve' }), 'items{ k: $sum(v) }');
   });
 });
+
+import { candidateSpans, pathPrefixes, wrapSpan, isValidSpan } from '../src/core/probe';
+describe('step-through probes', () => {
+  const expr = '$sum(orders.items.(price * qty))';
+  const data = JSON.stringify({ orders: [{ items: [{ price: 2, qty: 3 }, { price: 4, qty: 1 }] }, { items: [{ price: 5, qty: 2 }] }] });
+  const at = (needle: string, delta = 1) => expr.indexOf(needle) + delta;
+  const texts = (offset: number) => candidateSpans(expr, offset).map((s) => expr.slice(s.start, s.end));
+
+  test('candidates grow from the token to the whole expression', () => {
+    const t = texts(at('price'));
+    assert.equal(t[0], 'price');
+    assert.ok(t.includes('price * qty'));
+    assert.ok(t.includes('orders.items.(price * qty)'));
+    assert.equal(t[t.length - 1], expr);
+    for (let i = 1; i < t.length; i++) assert.ok(t[i].length >= t[i - 1].length);
+  });
+  test('call and path chains around a name are found', () => {
+    assert.ok(texts(at('orders')).includes('orders.items'));
+    assert.ok(texts(at('$sum', 2)).includes(expr));
+  });
+  test('wrapped expression is still valid and only valid spans are offered', () => {
+    for (const s of candidateSpans(expr, at('qty'))) assert.ok(isValidSpan(expr, s));
+    assert.equal(wrapSpan('a.b', { start: 2, end: 3 }), 'a.$__probe(b)');
+  });
+  test('values are captured in context, once per evaluation', async () => {
+    const span = candidateSpans(expr, at('price'))[0];
+    const r: any = await ev.evaluate({ expression: expr, input: data, probes: [span] });
+    assert.equal(r.status, 'probe');
+    assert.equal(r.results[0].calls, 3);
+    assert.deepEqual(r.results[0].values.map((v: string) => JSON.parse(v)), [2, 4, 5]);
+  });
+  test('a part that is never reached reports zero calls', async () => {
+    const e = 'missing ? price : 0';
+    const s = candidateSpans(e, e.indexOf('price') + 1)[0];
+    const r: any = await ev.evaluate({ expression: e, input: '{"price":1}', probes: [s] });
+    assert.equal(r.results[0].calls, 0);
+  });
+  test('probing does not change what the surrounding expression computes', async () => {
+    const e = 'a.b + 1';
+    const s = candidateSpans(e, 2)[0];
+    const r: any = await ev.evaluate({ expression: e, input: '{"a":{"b":41}}', probes: [s] });
+    assert.equal(r.results[0].values[0], '41');
+    assert.equal(r.results[0].error, undefined);
+  });
+  test('path prefixes give one probe per step', () => {
+    const p = pathPrefixes('orders.items.price');
+    assert.deepEqual(p.map((x) => x.label), ['orders', 'orders.items', 'orders.items.price']);
+    assert.deepEqual(pathPrefixes('a[0].b'), []);
+  });
+});
+
+describe('probes on the demo expressions', () => {
+  test('every demo: spans at many cursor positions are valid and probing never crashes', async () => {
+    let probed = 0;
+    for (const d of DEMOS) {
+      const text = d.expression;
+      for (let off = 0; off <= text.length; off += 13) {
+        const spans = candidateSpans(text, off);
+        for (const s of spans) assert.ok(isValidSpan(text, s), `${d.id}@${off}`);
+        if (spans[0]) {
+          const r: any = await ev.evaluate({ expression: text, input: demoInputText(d), probes: [spans[0]] });
+          assert.equal(r.status, 'probe', `${d.id}@${off}: ${JSON.stringify(r).slice(0, 200)}`);
+          assert.equal(r.results[0].parseError, undefined, `${d.id}@${off}`);
+          probed++;
+        }
+      }
+    }
+    assert.ok(probed > 50);
+  });
+});
+
+import { inspectPart } from '../src/core/inspectpart';
+describe('inspectPart (AI tool)', () => {
+  const data = JSON.stringify({ orders: [{ items: [{ price: 2, qty: 3 }] }, { items: [{ price: 5, qty: 2 }] }] });
+  test('reports per-item values and a step breakdown', async () => {
+    const r = await inspectPart(ev, { expression: '$sum(orders.items.(price * qty))', part: 'orders.items', input: data });
+    assert.equal(r.isError, false);
+    assert.match(r.text, /evaluated once/);
+    assert.match(r.text, /Step by step/);
+  });
+  test('says when a part is not reached and rejects non-expressions', async () => {
+    const miss = await inspectPart(ev, { expression: 'nothing.x + 1', part: 'x', input: '{}' });
+    assert.match(miss.text, /not reached/);
+    const bad = await inspectPart(ev, { expression: 'a.b', part: '.b', input: '{}' });
+    assert.equal(bad.isError, true);
+  });
+});

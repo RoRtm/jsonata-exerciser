@@ -4,7 +4,7 @@ import { CHEATSHEET, DIRECTIVES } from './core/cheatsheet';
 const BEGIN = '<!-- jsonata-exerciser:begin -->';
 const END = '<!-- jsonata-exerciser:end -->';
 
-const TOOL_REFS = ['jsonataExerciserState', 'jsonataInputStructure', 'jsonataEvaluate', 'jsonataValidate', 'jsonataGuide', 'jsonataExerciserUpdate'];
+const TOOL_REFS = ['jsonataExerciserState', 'jsonataInputStructure', 'jsonataEvaluate', 'jsonataInspect', 'jsonataValidate', 'jsonataGuide', 'jsonataExerciserUpdate'];
 
 const instructionsFile = `---
 description: JSONata conventions and workflow (JSONata is not JavaScript)

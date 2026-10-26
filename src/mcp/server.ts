@@ -10,6 +10,7 @@ import { analyze } from '../core/analyze';
 import { formatJsonata } from '../core/format';
 import { FUNCTIONS, FUNCTION_BY_NAME } from '../core/functions';
 import { describeStructure } from '../core/schema';
+import { inspectPart } from '../core/inspectpart';
 import { CHEATSHEET, DIRECTIVES } from '../core/cheatsheet';
 
 const evaluator = new Evaluator();
@@ -109,6 +110,34 @@ tool(
     return f
       ? text(`${f.signature}\n${f.description}\n${f.url}`)
       : text(`No built-in function named "${name}".`, true);
+  }
+);
+
+tool(
+  'jsonata_inspect',
+  {
+    title: 'Inspect part of a JSONata expression',
+    description:
+      'Step-through debugging: evaluates one sub-expression (`part`, exact text taken from the expression) in its real context and returns the value(s) it produced, once per evaluation (e.g. per array item), plus a step-by-step breakdown for dotted paths. Use it to find out where an expression returns nothing or the wrong value.',
+    inputSchema: {
+      expression: z.string().optional(),
+      expression_file: z.string().optional(),
+      part: z.string().describe('Exact text of the sub-expression to inspect, e.g. "orders.items.price"'),
+      occurrence: z.number().int().min(0).optional().describe('Which occurrence of `part` (0 = first)'),
+      input: z.string().optional(),
+      input_file: z.string().optional()
+    }
+  },
+  async ({ expression, expression_file, part, occurrence, input, input_file }) => {
+    try {
+      if (expression === undefined && expression_file) expression = await fs.readFile(expression_file, 'utf8');
+      if (input === undefined && input_file) input = await fs.readFile(input_file, 'utf8');
+    } catch (e: any) {
+      return text(`Cannot read file: ${e.message}`, true);
+    }
+    if (expression === undefined) return text('Provide `expression` or `expression_file`.', true);
+    const r = await inspectPart(evaluator, { expression, part, occurrence, input });
+    return text(r.text, r.isError);
   }
 );
 

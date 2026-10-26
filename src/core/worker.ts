@@ -2,14 +2,18 @@
 // (e.g. infinite recursion) without freezing the VS Code extension host.
 import { parentPort } from 'node:worker_threads';
 import jsonata from 'jsonata';
+import { PROBE_FN, Span, ProbeValue, wrapSpan } from './probe';
 
 export interface WorkerRequest {
   id: number;
   expression: string;
   input?: string; // JSON text; undefined/blank => no input
+  /** When set, evaluates the expression once per span with a value probe at that span. */
+  probes?: Span[];
 }
 
 export type WorkerResponse =
+  | { id: number; status: 'probe'; results: ProbeValue[]; ms: number }
   | { id: number; status: 'ok'; text: string; ms: number }
   | { id: number; status: 'empty'; ms: number }
   | {
@@ -43,6 +47,12 @@ parentPort!.on('message', async (req: WorkerRequest) => {
     }
   }
 
+  if (req.probes) {
+    const results: ProbeValue[] = [];
+    for (const span of req.probes) results.push(await runProbe(req.expression, data, span));
+    return reply({ status: 'probe', results });
+  }
+
   let compiled: ReturnType<typeof jsonata>;
   try {
     compiled = jsonata(req.expression);
@@ -63,3 +73,41 @@ parentPort!.on('message', async (req: WorkerRequest) => {
     return reply({ status: 'error', phase: 'eval', error: plainError(err) });
   }
 });
+
+const MAX_VALUES = 20;
+const MAX_CHARS = 20000;
+
+function serialize(v: unknown): string {
+  if (v === undefined) return '(undefined)';
+  try {
+    const t = JSON.stringify(v, (_k, x) => (typeof x === 'function' ? '<function>' : x), 2);
+    if (t === undefined) return '<function>';
+    return t.length > MAX_CHARS ? t.slice(0, MAX_CHARS) + '\n... (truncated)' : t;
+  } catch {
+    return '(not serializable)';
+  }
+}
+
+async function runProbe(expression: string, data: unknown, span: Span): Promise<ProbeValue> {
+  const base = { start: span.start, end: span.end };
+  let compiled: ReturnType<typeof jsonata>;
+  try {
+    compiled = jsonata(wrapSpan(expression, span));
+  } catch (err: any) {
+    return { ...base, calls: 0, values: [], parseError: String(err?.message ?? err) };
+  }
+  const values: string[] = [];
+  let calls = 0;
+  compiled.registerFunction(PROBE_FN, (v: unknown) => {
+    calls++;
+    if (values.length < MAX_VALUES) values.push(serialize(v));
+    return v;
+  });
+  let error: ProbeValue['error'];
+  try {
+    await compiled.evaluate(data);
+  } catch (err: any) {
+    error = { code: err?.code, message: String(err?.message ?? err), position: err?.position };
+  }
+  return { ...base, calls, values, error };
+}
