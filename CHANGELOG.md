@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.5.2
+
+- README rewritten: hero section with badges, feature overview, screenshots for every major feature, and a complete list of capabilities.
+
 ## 1.5.1
 
 - Profiler button (gauge icon) in the title bar of `.jsonata` editors, next to Run Expression.
