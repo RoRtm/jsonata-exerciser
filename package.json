@@ -2,7 +2,7 @@
   "name": "jsonata-exerciser",
   "displayName": "JSONata Exerciser",
   "description": "Local, real-time JSONata playground and debugger for VS Code: live output, IntelliSense, validation, formatter, demos, online help and Copilot / Claude integration.",
-  "version": "1.5.0",
+  "version": "1.5.1",
   "publisher": "ro-rtm",
   "license": "MIT",
   "icon": "images/icon.png",
@@ -198,7 +198,8 @@
       {
         "command": "jsonataExerciser.profile",
         "title": "Profile Expression (find slow parts)",
-        "category": "JSONata"
+        "category": "JSONata",
+        "icon": "$(dashboard)"
       },
       {
         "command": "jsonataExerciser.profileClear",
@@ -256,14 +257,19 @@
           "group": "navigation@1"
         },
         {
-          "command": "jsonataExerciser.openDemo",
+          "command": "jsonataExerciser.profile",
           "when": "resourceLangId == jsonata",
           "group": "navigation@2"
         },
         {
-          "command": "jsonataExerciser.openHelp",
+          "command": "jsonataExerciser.openDemo",
           "when": "resourceLangId == jsonata",
           "group": "navigation@3"
+        },
+        {
+          "command": "jsonataExerciser.openHelp",
+          "when": "resourceLangId == jsonata",
+          "group": "navigation@4"
         }
       ],
       "explorer/context": [

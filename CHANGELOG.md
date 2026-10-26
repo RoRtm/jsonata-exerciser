@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.5.1
+
+- Profiler button (gauge icon) in the title bar of `.jsonata` editors, next to Run Expression.
+
 ## 1.5.0
 
 - **Performance profiler:** *JSONata: Profile Expression (find slow parts)* measures which parts of an expression take the most time. Heat map and inline hints in the editor, hover details, a clickable ranked report, suggestions for common problems (quadratic filters in loops, `$append` in `$reduce`, `**`, sorting/`$eval` in loops), and an option to simulate larger data (arrays ×10 / ×100 / ×1000).

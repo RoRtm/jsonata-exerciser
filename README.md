@@ -70,7 +70,7 @@ How it works: the inspected part `x` is temporarily replaced by `$__probe(x)`, a
 
 ## Performance profiler
 
-Is an expression slow on big data? Run **JSONata: Profile Expression (find slow parts)** (also in the editor context menu).
+Is an expression slow on big data? Click the **gauge icon** in the title bar of the `.jsonata` editor, or run **JSONata: Profile Expression (find slow parts)** (also in the editor context menu).
 
 ![JSONata profiler showing the editor heatmap, optimization suggestions, and time breakdown](images/jsonata-profiler.png)
 
@@ -163,7 +163,7 @@ Open the Command Palette (`Ctrl+Shift+P`) and type `JSONata` to find the extensi
 | Bind Input JSON to Expression File... | Right-click a `.jsonata` file |
 | Switch Back to Scratch Input/Expression | |
 | Evaluate Now | `Ctrl+Alt+Enter` (`Cmd+Alt+Enter` on macOS) |
-| Profile Expression (find slow parts) | Editor context menu |
+| Profile Expression (find slow parts) | Gauge icon in the title bar of `.jsonata` editors, editor context menu |
 | Clear Profile Highlights | |
 | Inspect Value at Cursor / Selection | `Ctrl+Alt+J` (`Cmd+Alt+J`), editor context menu |
 | Inspect Larger Expression | `Ctrl+Alt+Shift+J` |
