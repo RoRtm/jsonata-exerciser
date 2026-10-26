@@ -55,6 +55,8 @@ $sum(orders.items.(price * qty))
                     ^ cursor on "price"         ▸ ×3: 2, 4, 5
 ```
 
+![Step-through inspection showing the value of a selected JSONata sub-expression](images/step-through-debugging.png)
+
 * **Live:** with the Exerciser open, the sub-expression under the cursor is highlighted and its value shows as an inline hint at the end of the line. Hover the highlight for the full value.
 * **Per item:** parts inside a path or `$map` run once per array item; you see `×3: 2, 4, 5` instead of a single value.
 * **Step by step:** for a path such as `orders.items.price` the hover lists every step (`orders`, `orders.items`, `orders.items.price`) with its evaluation count and value, so you see exactly where it stops matching.
