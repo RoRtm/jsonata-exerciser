@@ -82,14 +82,16 @@ Click the **gauge icon** in a `.jsonata` editor, or run **JSONata: Profile Expre
 | Feature | Details |
 | --- | --- |
 | Validation | Errors from the official parser with exact positions; runtime errors (for example `T2002`) underlined; warning for unknown `$functions`. |
-| IntelliSense | All `$functions` with signatures, signature help, hover docs, keywords, your variables, and **field names from your input JSON** (path-aware). |
+| IntelliSense | All `$functions` with signatures, signature help, hover docs, keywords, your variables, and **field names from your input JSON** (path-aware) and **filter values**: type `orders[status='` and get the values that occur in the input, most frequent first. |
 | Formatter | `Shift+Alt+F`. Prettier plus the [Stedi plugin](https://github.com/Stedi/prettier-plugin-jsonata); output must parse to an identical AST or it is not applied. Choose object layout: `preserve`, `expanded` or `auto`. |
 | Snippets | `map`, `filter`, `reduce`, `sort`, `block`, `fn`, `groupby`, `reshape`, `regex`, ... |
 | Online help | Searchable docs and function reference, `Shift+F1` on a `$function`, hover links, **Open try.jsonata.org**. Only opens your browser on request. |
 
 ![Field-name completions for autoClosingPairs showing close, notIn and open from the input JSON](images/intelli-sense.png)
 
-![JSONata function completion for $merge showing its array-of-objects argument](images/intelli-sense2.png)
+Filter values come from the input too. Typing `orders[id=` lists the `id` values that occur in the data:
+
+![Value suggestions O-1 to O-5 after typing orders[id= in a JSONata filter](images/value-suggestion.png)
 
 ### AI: GitHub Copilot and Claude
 
@@ -188,6 +190,7 @@ Type `JSONata` in the Command Palette (`Ctrl+Shift+P`).
 | `jsonataExerciser.format.printWidth` | `80` | Formatter line width |
 | `jsonataExerciser.format.objectLayout` | `preserve` | `preserve` keeps multi-line objects if you broke after `{`, `expanded` breaks every key, `auto` collapses what fits |
 | `jsonataExerciser.intellisense.fieldSuggestions` | `true` | Suggest field names from the input JSON |
+| `jsonataExerciser.intellisense.valueSuggestions` | `true` | Suggest the values found in the input when typing a filter such as `orders[status='` |
 | `jsonataExerciser.ai.registerMcpServerInVsCode` | `false` | Also register the MCP server in VS Code |
 
 ## How it works

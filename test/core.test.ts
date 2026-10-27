@@ -4,7 +4,7 @@ import * as path from 'node:path';
 import { Evaluator } from '../src/core/evaluator';
 import { analyze, errorToRange, sameAst } from '../src/core/analyze';
 import { formatJsonata, FormatError } from '../src/core/format';
-import { fieldSuggestions, callContextAt } from '../src/core/intel';
+import { fieldSuggestions, callContextAt, valueCompletion } from '../src/core/intel';
 import { DEMOS, demoInputText } from '../src/core/demos';
 import { FUNCTIONS, paramLabels } from '../src/core/functions';
 import { jsonNodeAt, toJsonataPath, matchResult, probeAllParts } from '../src/core/navigate';
@@ -399,5 +399,45 @@ describe('navigation between data and expression', () => {
     assert.equal(id[0].exact, false); // one item of the array
     const root = matchResult(expression, set.probes, { total: 6.5, ids: ['a', 'b'] }, { atRoot: true });
     assert.equal(expression.slice(root[0].start, root[0].end), expression);
+  });
+});
+
+
+describe('filter value suggestions', () => {
+  const data = {
+    orders: [
+      { id: 'A1', status: "o'pen", qty: 2, paid: true, customer: { country: 'CH' } },
+      { id: 'B2', status: 'closed', qty: 5, paid: false, customer: { country: 'DE' } },
+      { id: 'C3', status: 'closed', qty: 2, paid: true, customer: { country: 'CH' } }
+    ],
+    other: [{ id: 'Z9' }]
+  };
+
+  test('lists the values of the field inside the container, most frequent first', () => {
+    const r = valueCompletion(data, "orders[status='")!;
+    assert.equal(r.quote, "'");
+    assert.deepEqual(r.values.map((v) => v.label), ['closed']); // the value with an apostrophe cannot be written in single quotes
+    const ids = valueCompletion(data, 'orders[id=')!;
+    assert.deepEqual(ids.values.map((v) => v.insert), ["'A1'", "'B2'", "'C3'"]); // scoped to orders, not "other"
+  });
+
+  test('partial text, double quotes, numbers and nested fields', () => {
+    assert.equal(valueCompletion(data, 'orders[id="B')!.partialLength, 1);
+    const q = valueCompletion(data, 'orders[qty=')!;
+    assert.deepEqual(q.values.map((v) => v.insert), ['2', '5']);
+    assert.equal(valueCompletion(data, "orders[customer.country!='")!.values[0].label, 'CH');
+    assert.deepEqual(valueCompletion(data, "orders[paid=")!.values.map((v) => v.insert).sort(), ['false', 'true']);
+    const mixed = valueCompletion(data, "orders[qty=2 and status='")!;
+    assert.equal(mixed.field, 'status');
+  });
+
+  test('values with quotes are escaped or quoted safely when no quote was typed', () => {
+    const r = valueCompletion(data, 'orders[status=')!;
+    assert.ok(r.values.some((v) => v.insert === '"o\'pen"'));
+  });
+
+  test('not inside a predicate or comparison: no suggestions', () => {
+    assert.equal(valueCompletion(data, "x := 'a"), undefined);
+    assert.equal(valueCompletion(data, "orders.id = '"), undefined);
   });
 });

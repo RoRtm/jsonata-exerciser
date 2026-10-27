@@ -89,6 +89,26 @@ export function allFields(root: unknown, limit = 500): FieldInfo[] {
   return [...map.values()];
 }
 
+/** Values reached by following a path (`a.b.c`) from the root; the first step may be found anywhere. */
+function resolveSegments(root: unknown, segments: string[]): unknown[] {
+  let nodes: unknown[];
+  let rest = segments;
+  if (segments[0] === '$' || segments[0] === '$$') {
+    nodes = [root];
+    rest = segments.slice(1);
+  } else {
+    const first = segments[0];
+    const atRoot = descend([root], first);
+    nodes = atRoot.length ? atRoot : findByKey(root, first);
+    rest = segments.slice(1);
+  }
+  for (const seg of rest) {
+    nodes = descend(nodes, seg);
+    if (nodes.length === 0) break;
+  }
+  return nodes;
+}
+
 const SEGMENT = '(?:[A-Za-z_][\\w]*|`[^`]*`|\\$\\$|\\$)';
 const CHAIN_RE = new RegExp(`(${SEGMENT}(?:\\s*\\.\\s*${SEGMENT})*)\\s*\\.\\s*([\\w]*)$`);
 
@@ -106,21 +126,7 @@ export function fieldSuggestions(root: unknown, textBefore: string): FieldInfo[]
   const m = CHAIN_RE.exec(textBefore);
   if (!m) return allFields(root);
   const segments = m[1].split('.').map((s) => unquote(s.trim()));
-  let nodes: unknown[];
-  let rest = segments;
-  if (segments[0] === '$' || segments[0] === '$$') {
-    nodes = [root];
-    rest = segments.slice(1);
-  } else {
-    const first = segments[0];
-    const atRoot = descend([root], first);
-    nodes = atRoot.length ? atRoot : findByKey(root, first);
-    rest = segments.slice(1);
-  }
-  for (const seg of rest) {
-    nodes = descend(nodes, seg);
-    if (nodes.length === 0) break;
-  }
+  const nodes = resolveSegments(root, segments);
   if (nodes.length === 0) return allFields(root);
   const into = new Map<string, FieldInfo>();
   fieldsOf(nodes, into);
@@ -174,4 +180,96 @@ export function callContextAt(text: string): CallContext | undefined {
     // bracket/brace frames nested inside a call belong to the argument, keep looking outward
   }
   return undefined;
+}
+
+// ------------------------------------------------------------ filter value suggestions
+
+export interface ValueSuggestion {
+  /** Text to insert (already quoted/escaped for the context). */
+  insert: string;
+  /** Raw value for display. */
+  label: string;
+  type: 'string' | 'number' | 'boolean';
+  count: number;
+}
+
+export interface ValueCompletion {
+  /** Quote character the user already typed (none: a value is being started). */
+  quote?: '"' | "'";
+  /** Number of characters of the value typed so far (the part to replace). */
+  partialLength: number;
+  field: string;
+  values: ValueSuggestion[];
+}
+
+const CMP_RE = new RegExp(`(${SEGMENT}(?:\\s*\\.\\s*${SEGMENT})*)\\s*(!?=)\\s*(?:(["'])((?:\\\\.|(?!\\3)[^\\\\])*))?$`);
+
+/**
+ * Detects `... [ field = '|` (or `!=`, with or without an opened quote) at the end of `textBefore` and
+ * lists the distinct values of that field in the input, most frequent first. Returns undefined when
+ * the cursor is not at the value of a comparison inside a predicate.
+ */
+export function valueCompletion(root: unknown, textBefore: string, max = 200): ValueCompletion | undefined {
+  if (root === undefined) return undefined;
+  const m = CMP_RE.exec(textBefore);
+  if (!m) return undefined;
+  const quote = m[3] as '"' | "'" | undefined;
+  const partial = m[4] ?? '';
+
+  // must sit inside an unclosed predicate [ ... ]
+  let depth = 0;
+  let open = -1;
+  for (let i = m.index - 1; i >= 0; i--) {
+    const c = textBefore[i];
+    if (c === ']') depth++;
+    else if (c === '[') {
+      if (depth === 0) {
+        open = i;
+        break;
+      }
+      depth--;
+    }
+  }
+  if (open < 0) return undefined;
+
+  const fieldSegs = m[1].split('.').map((x) => unquote(x.trim()));
+  const containerMatch = new RegExp(`(${SEGMENT}(?:\\s*\\.\\s*${SEGMENT})*)\\s*$`).exec(textBefore.slice(0, open));
+  const containers = containerMatch ? resolveSegments(root, containerMatch[1].split('.').map((x) => unquote(x.trim()))) : [];
+
+  let nodes: unknown[] = containers;
+  for (const seg of fieldSegs) {
+    nodes = descend(nodes, seg);
+    if (nodes.length === 0) break;
+  }
+  if (nodes.length === 0) nodes = resolveSegments(root, fieldSegs); // container unknown: search the document
+
+  const counts = new Map<string, { v: string | number | boolean; n: number }>();
+  for (const n of nodes) {
+    for (const item of children(n)) {
+      if (typeof item === 'string' || typeof item === 'number' || typeof item === 'boolean') {
+        const key = `${typeof item}:${item}`;
+        const e = counts.get(key);
+        if (e) e.n++;
+        else counts.set(key, { v: item, n: 1 });
+      }
+    }
+  }
+
+  const values: ValueSuggestion[] = [];
+  const esc = (t: string, q: string) => t.replace(/\\/g, '\\\\').replace(new RegExp(q, 'g'), '\\' + q);
+  for (const { v, n } of [...counts.values()].sort((a, b) => b.n - a.n || String(a.v).localeCompare(String(b.v)))) {
+    if (values.length >= max) break;
+    if (typeof v === 'string') {
+      if (quote) {
+        if (quote === "'" && v.includes("'")) continue; // JSONata has no \' escape inside single quotes
+        values.push({ insert: esc(v, quote), label: v, type: 'string', count: n });
+      } else {
+        const q = v.includes("'") ? '"' : "'";
+        values.push({ insert: q + esc(v, q) + q, label: v, type: 'string', count: n });
+      }
+    } else if (!quote) {
+      values.push({ insert: String(v), label: String(v), type: typeof v as 'number' | 'boolean', count: n });
+    }
+  }
+  return { quote, partialLength: partial.length, field: m[1], values };
 }

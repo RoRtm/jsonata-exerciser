@@ -2,7 +2,7 @@ import * as vscode from 'vscode';
 import { analyze, errorToRange, formatJsonataError, Issue } from './core/analyze';
 import { EvalResult } from './core/evaluator';
 import { FUNCTIONS, FUNCTION_BY_NAME, paramLabels } from './core/functions';
-import { allFields, callContextAt, fieldSuggestions } from './core/intel';
+import { allFields, callContextAt, fieldSuggestions, valueCompletion } from './core/intel';
 import { formatJsonata, FormatError } from './core/format';
 import type { SessionManager } from './session';
 
@@ -99,15 +99,47 @@ export function registerProviders(session: SessionManager): vscode.Disposable[] 
           const fnRange = doc.getWordRangeAtPosition(pos, /\$[A-Za-z_]\w*|\$/);
           const wantsFunctions = /\$[A-Za-z_]*$/.test(line);
 
+          // filter values: orders[status='| lists the values found in the input
+          if (!wantsFunctions && session.inputJson !== undefined && vscode.workspace.getConfiguration('jsonataExerciser').get<boolean>('intellisense.valueSuggestions', true)) {
+            const before = doc.getText(new vscode.Range(new vscode.Position(0, 0), pos));
+            const vc = valueCompletion(session.inputJson, before);
+            if (vc) {
+              const range = new vscode.Range(pos.translate(0, -vc.partialLength), pos);
+              const nextChar = doc.getText(new vscode.Range(pos, pos.translate(0, 1)));
+              return new vscode.CompletionList(
+                vc.values.map((v, i) => {
+                  const it = new vscode.CompletionItem(v.label, vscode.CompletionItemKind.Value);
+                  it.insertText = vc.quote && nextChar !== vc.quote ? v.insert + vc.quote : v.insert;
+                  it.range = range;
+                  it.filterText = v.label;
+                  it.detail = `${vc.field} · ${v.type} · ${v.count}×`;
+                  it.documentation = `Value of "${vc.field}" found in the Exerciser input JSON`;
+                  it.sortText = String(i).padStart(4, '0');
+                  return it;
+                }),
+                false
+              );
+            }
+          }
+
           if (wantsFunctions) {
+            // A "(" already follows the word: insert only the name, so `$ro|($sum(x), 2)` becomes `$round($sum(x), 2)`.
+            const wordEnd = fnRange?.end ?? pos;
+            const hasParen = /^\s*\(/.test(doc.lineAt(wordEnd.line).text.slice(wordEnd.character));
             for (const f of FUNCTIONS) {
               const it = new vscode.CompletionItem(`$${f.name}`, vscode.CompletionItemKind.Function);
               it.detail = f.signature;
               it.documentation = fnMarkdown(f.name);
               const params = f.signature.slice(f.signature.indexOf('(') + 1, f.signature.lastIndexOf(')'));
               const required = params.split('[')[0].split(',').map((s) => s.trim()).filter(Boolean);
-              const snippet = required.map((p, i) => `\${${i + 1}:${p}}`).join(', ');
-              it.insertText = new vscode.SnippetString(`$${f.name}(${snippet})`);
+              // Build the snippet with the API so the leading `$` is escaped; a raw "$round(" would be read as the snippet variable $round.
+              const snippet = new vscode.SnippetString().appendText(`$${f.name}(`);
+              required.forEach((p, i) => {
+                if (i > 0) snippet.appendText(', ');
+                snippet.appendPlaceholder(p, i + 1);
+              });
+              snippet.appendText(')');
+              it.insertText = hasParen ? `$${f.name}` : snippet;
               it.range = fnRange ?? new vscode.Range(pos, pos);
               it.filterText = `$${f.name}`;
               it.sortText = `0_${f.name}`;
@@ -155,7 +187,10 @@ export function registerProviders(session: SessionManager): vscode.Disposable[] 
         }
       },
       '$',
-      '.'
+      '.',
+      "'",
+      '"',
+      '='
     )
   );
 

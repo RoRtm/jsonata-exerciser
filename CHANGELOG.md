@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.7.1
+
+- Fix: accepting a function completion such as `$round` replaced the typed text with `(number)`. The snippet's leading `$` was read as a snippet variable; it is now escaped.
+- Fix: completing a function name when a `(` already follows (for example `$ro($sum(x), 2)`) no longer inserts `(number)` again; only the name is inserted.
+
+## 1.7.0
+
+- **Filter value suggestions:** typing `orders[status='` (also `=`, `!=`, double quotes, numbers, booleans, nested fields like `customer.country`, and `and`/`or` chains) lists the distinct values of that field in the input JSON, most frequent first, scoped to the array you are filtering. Values that cannot be written safely in the quote you typed are skipped or quoted differently. Setting `intellisense.valueSuggestions`.
+
 ## 1.6.2
 
 - The *Open JSONata Exerciser* title-bar button is no longer shown on the result pane, where it had no effect.
