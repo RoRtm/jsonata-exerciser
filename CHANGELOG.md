@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.7.3
+
+- Fix: README image with brackets in its alt text did not render.
+
 ## 1.7.2
 
 - The *Open Exerciser with Demo...* (beaker) button is shown again in the title bar of JSON editors, next to *Open JSONata Exerciser*. It is not shown on the result pane.

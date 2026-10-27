@@ -91,7 +91,7 @@ Click the **gauge icon** in a `.jsonata` editor, or run **JSONata: Profile Expre
 
 Filter values come from the input too. Typing `orders[id=` lists the `id` values that occur in the data:
 
-![Value suggestions O-1 to O-5 after typing orders[id= in a JSONata filter](images/value-suggestion.png)
+![Value suggestions O-1 to O-5 offered while typing a JSONata filter on id](images/value-suggestion.png)
 
 ### AI: GitHub Copilot and Claude
 
