@@ -2,7 +2,7 @@
   "name": "jsonata-exerciser",
   "displayName": "JSONata Exerciser",
   "description": "Local, real-time JSONata playground and debugger for VS Code: live output, IntelliSense, validation, formatter, demos, online help and Copilot / Claude integration.",
-  "version": "1.5.2",
+  "version": "1.6.2",
   "publisher": "ro-rtm",
   "license": "MIT",
   "icon": "images/icon.png",
@@ -205,6 +205,21 @@
         "command": "jsonataExerciser.profileClear",
         "title": "Clear Profile Highlights",
         "category": "JSONata"
+      },
+      {
+        "command": "jsonataExerciser.copyPath",
+        "title": "Copy JSONata Path of Value at Cursor",
+        "category": "JSONata"
+      },
+      {
+        "command": "jsonataExerciser.insertPath",
+        "title": "Insert JSONata Path into Expression",
+        "category": "JSONata"
+      },
+      {
+        "command": "jsonataExerciser.revealSource",
+        "title": "Reveal Expression Part for Result Value",
+        "category": "JSONata"
       }
     ],
     "keybindings": [
@@ -242,13 +257,19 @@
         "key": "ctrl+alt+shift+j",
         "mac": "cmd+alt+shift+j",
         "when": "editorTextFocus && editorLangId == jsonata"
+      },
+      {
+        "command": "jsonataExerciser.revealSource",
+        "key": "ctrl+alt+r",
+        "mac": "cmd+alt+r",
+        "when": "editorTextFocus && resourceScheme == jsonata-result"
       }
     ],
     "menus": {
       "editor/title": [
         {
           "command": "jsonataExerciser.run",
-          "when": "resourceLangId == json || resourceLangId == jsonc",
+          "when": "(resourceLangId == json || resourceLangId == jsonc) && resourceScheme != jsonata-result",
           "group": "navigation@1"
         },
         {
@@ -304,6 +325,21 @@
           "command": "jsonataExerciser.profile",
           "when": "resourceLangId == jsonata && editorTextFocus",
           "group": "navigation@53"
+        },
+        {
+          "command": "jsonataExerciser.insertPath",
+          "when": "(resourceLangId == json || resourceLangId == jsonc) && resourceScheme != jsonata-result && editorTextFocus",
+          "group": "navigation@54"
+        },
+        {
+          "command": "jsonataExerciser.copyPath",
+          "when": "(resourceLangId == json || resourceLangId == jsonc) && resourceScheme != jsonata-result && editorTextFocus",
+          "group": "navigation@55"
+        },
+        {
+          "command": "jsonataExerciser.revealSource",
+          "when": "resourceScheme == jsonata-result && editorTextFocus",
+          "group": "navigation@56"
         }
       ],
       "editor/title/context": [
@@ -387,6 +423,17 @@
           "default": 80,
           "minimum": 20,
           "description": "Maximum length of the inline value hint."
+        },
+        "jsonataExerciser.navigate.live": {
+          "type": "boolean",
+          "default": true,
+          "description": "Click a value in the Exerciser result pane to highlight the part of the expression that produced it."
+        },
+        "jsonataExerciser.navigate.arrayIndexes": {
+          "type": "string",
+          "enum": ["omit", "include"],
+          "default": "omit",
+          "description": "Paths copied or inserted from the input JSON: 'omit' drops array indexes (orders.items.price, JSONata maps over arrays), 'include' keeps them (orders[1].items[0].price)."
         },
         "jsonataExerciser.profile.timeoutMs": {
           "type": "number",

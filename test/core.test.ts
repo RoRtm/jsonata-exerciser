@@ -7,6 +7,7 @@ import { formatJsonata, FormatError } from '../src/core/format';
 import { fieldSuggestions, callContextAt } from '../src/core/intel';
 import { DEMOS, demoInputText } from '../src/core/demos';
 import { FUNCTIONS, paramLabels } from '../src/core/functions';
+import { jsonNodeAt, toJsonataPath, matchResult, probeAllParts } from '../src/core/navigate';
 
 const workerPath = path.join(__dirname, '..', 'dist', 'worker.js');
 const ev = new Evaluator({ workerPath });
@@ -366,5 +367,37 @@ describe('profiler', () => {
       c: { d: [{ k: 1 }, { k: 1 }, { k: 1 }] }
     });
     assert.deepEqual(scaleArrays([1], 1), [1]);
+  });
+});
+
+
+describe('navigation between data and expression', () => {
+  const json = '{\n  "orders": [\n    { "id": "a", "items": [ { "price": 2.5 }, { "price": 4 } ] },\n    { "id": "b", "my key": 1 }\n  ]\n}';
+
+  test('input path at cursor drops array indexes and quotes odd names', () => {
+    const at = (needle: string, delta = 0) => jsonNodeAt(json, json.indexOf(needle) + delta)!;
+    assert.equal(toJsonataPath(at('4').path), 'orders.items.price');
+    assert.equal(toJsonataPath(at('4').path, true), 'orders[0].items[1].price');
+    assert.equal(toJsonataPath(at('"my key"', 2).path), 'orders.`my key`');
+    assert.equal(toJsonataPath(jsonNodeAt(json, 0)!.path), '$');
+  });
+
+  test('cursor on a key selects that member', () => {
+    const n = jsonNodeAt(json, json.indexOf('"items"') + 2)!;
+    assert.deepEqual(n.path, ['orders', 0, 'items']);
+  });
+
+  test('result value maps back to the part that produced it', async () => {
+    const expression = '{ "total": $sum(orders.items.price), "ids": orders.id }';
+    const input = json;
+    const set = (await probeAllParts(ev, { expression, input }))!;
+    assert.ok(set);
+    const total = matchResult(expression, set.probes, 6.5, { key: 'total' });
+    assert.equal(expression.slice(total[0].start, total[0].end), '$sum(orders.items.price)');
+    const id = matchResult(expression, set.probes, 'b', { key: 'ids' });
+    assert.equal(expression.slice(id[0].start, id[0].end), 'orders.id');
+    assert.equal(id[0].exact, false); // one item of the array
+    const root = matchResult(expression, set.probes, { total: 6.5, ids: ['a', 'b'] }, { atRoot: true });
+    assert.equal(expression.slice(root[0].start, root[0].end), expression);
   });
 });

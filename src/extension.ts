@@ -8,6 +8,7 @@ import { registerAi, mcpConfigText } from './ai';
 import { addAiInstructions } from './instructions';
 import { Inspector } from './inspect';
 import { Profiler } from './profiler';
+import { Navigator } from './navigate';
 
 export function activate(ctx: vscode.ExtensionContext): void {
   const memfs = new MemFs();
@@ -16,6 +17,7 @@ export function activate(ctx: vscode.ExtensionContext): void {
   const session = new SessionManager(ctx, memfs, resultContent, diag);
   const inspector = new Inspector(session);
   const profiler = new Profiler(session);
+  const navigator = new Navigator(session);
 
   // Scratch files vanish with the process; restored editor tabs get the last saved content instead of an error.
   memfs.fallback = (uri) => {
@@ -25,13 +27,30 @@ export function activate(ctx: vscode.ExtensionContext): void {
     return undefined;
   };
 
+  // Register the file systems defensively: right after an update the previous extension host can still
+  // hold the scheme, and a throw here would abort activation and leave every command unregistered.
+  try {
+    ctx.subscriptions.push(
+      vscode.workspace.registerFileSystemProvider(MemFs.scheme, memfs, { isCaseSensitive: true }),
+      vscode.workspace.registerFileSystemProvider(ResultContent.scheme, resultContent, { isCaseSensitive: true, isReadonly: true })
+    );
+  } catch (e: any) {
+    void vscode.window
+      .showWarningMessage(
+        `JSONata Exerciser could not register its scratch documents (${e?.message ?? e}). Reload the window to finish the update.`,
+        'Reload Window'
+      )
+      .then((c) => {
+        if (c) void vscode.commands.executeCommand('workbench.action.reloadWindow');
+      });
+  }
+
   ctx.subscriptions.push(
-    vscode.workspace.registerFileSystemProvider(MemFs.scheme, memfs, { isCaseSensitive: true }),
-    vscode.workspace.registerFileSystemProvider(ResultContent.scheme, resultContent, { isCaseSensitive: true, isReadonly: true }),
     diag,
     session,
     inspector,
     profiler,
+    navigator,
     ...registerProviders(session),
     ...registerAi(ctx, session)
   );
@@ -136,6 +155,9 @@ export function activate(ctx: vscode.ExtensionContext): void {
   reg('jsonataExerciser.inspect', () => inspector.run({}));
   reg('jsonataExerciser.inspectExpand', () => inspector.run({ expand: true }));
   reg('jsonataExerciser.inspectToggleLive', () => inspector.toggleLive());
+  reg('jsonataExerciser.copyPath', () => navigator.copyPath());
+  reg('jsonataExerciser.insertPath', () => navigator.insertPath());
+  reg('jsonataExerciser.revealSource', () => navigator.revealSource());
   reg('jsonataExerciser.addAiInstructions', () => addAiInstructions());
 
   reg('jsonataExerciser.openTryOnline', () => openUrl('https://try.jsonata.org/'));

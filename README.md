@@ -21,6 +21,7 @@ Live results, step-through inspection, a performance profiler, IntelliSense, a f
 | --- | --- |
 | **Live as you type** | Three linked panes like [try.jsonata.org](https://try.jsonata.org/): input, expression, result. Updates on every keystroke. |
 | **See inside an expression** | Put the cursor on any part and see what it evaluates to, per item and step by step. |
+| **Click your way around** | Right-click a field in the input JSON to insert its JSONata path. Click a value in the result and the part of the expression that produced it lights up. |
 | **Find the slow part** | Heat map, ranked report and concrete fixes for slow expressions, optionally on simulated larger data. |
 | **Works with your project** | Right-click any JSON or `.jsonata` file. Expressions remember their input file. |
 | **AI that checks its work** | Copilot and Claude read your data, write an expression, run it locally and fix it until it works. |
@@ -33,6 +34,7 @@ Live results, step-through inspection, a performance profiler, IntelliSense, a f
 * Three-pane live playground: input JSON (left), expression (top right), result (bottom right).
 * Errors appear in the result, the status bar and as squiggles in the expression.
 * Panes **follow the files you open**: a JSON file becomes the input, a `.jsonata` file becomes the expression (setting `followEditors`).
+* Click a result value to see which part of the expression produced it; right-click an input field to insert its path.
 * **Open JSONata Exerciser** button in the title bar of JSON editors, **Run** play button and **Profile** gauge in `.jsonata` editors.
 * Closed a pane? The buttons and **Evaluate Now** (`Ctrl+Alt+Enter`) restore all three.
 * Scratch documents survive a restart and can be saved as real files with `Ctrl+S`.
@@ -57,6 +59,12 @@ $sum(orders.items.(price * qty))
 * Parts that are never reached say so instead of showing an empty value.
 * **Inspect Larger Expression** (`Ctrl+Alt+Shift+J`) widens the selection: `price` → `price * qty` → `orders.items.(price * qty)` → everything.
 * Keys: **Inspect Value** `Ctrl+Alt+J`; toggle live hints with `inspect.live`.
+
+### Navigate between data and expression
+
+* **Input to expression:** right-click a value or key in the input JSON and choose **Insert JSONata Path into Expression** (or **Copy JSONata Path of Value at Cursor**). Array indexes are dropped because JSONata maps over arrays (`orders.items.price`); names with spaces or symbols get backticks (`` orders.`my key` ``). Setting `navigate.arrayIndexes` = `include` keeps them (`orders[1].items[0].price`).
+* **Result to expression:** click a value or key in the result pane. The part of the expression that produced it is highlighted and scrolled into view, with a hint such as `◂ produces summary.total`. If several parts yield the same value, run **Reveal Expression Part for Result Value** (`Ctrl+Alt+R`) again to step through the candidates. Switch the click behavior off with `navigate.live`.
+* Matching uses the same probes as step-through inspection, so it works for any expression. A value assembled from several parts (for example a string concatenation) has no single source and reports that.
 
 ### Performance profiler
 
@@ -151,6 +159,9 @@ Type `JSONata` in the Command Palette (`Ctrl+Shift+P`).
 | Inspect Value at Cursor / Selection | `Ctrl+Alt+J`, editor context menu |
 | Inspect Larger Expression | `Ctrl+Alt+Shift+J` |
 | Toggle Live Value Inspection | |
+| Insert JSONata Path into Expression | Right-click a value in a JSON editor |
+| Copy JSONata Path of Value at Cursor | Right-click a value in a JSON editor |
+| Reveal Expression Part for Result Value | `Ctrl+Alt+R` in the result pane, right-click, or just click a value |
 | Profile Expression (find slow parts) | Gauge icon in `.jsonata` editors, context menu |
 | Clear Profile Highlights | |
 | Format Expression | `Shift+Alt+F` |
@@ -171,6 +182,8 @@ Type `JSONata` in the Command Palette (`Ctrl+Shift+P`).
 | `jsonataExerciser.evaluationTimeoutMs` | `5000` | Abort long-running evaluations |
 | `jsonataExerciser.inspect.live` | `true` | Inline value of the part under the cursor |
 | `jsonataExerciser.inspect.maxLength` | `80` | Maximum length of the inline hint |
+| `jsonataExerciser.navigate.live` | `true` | Clicking a result value highlights the part of the expression that produced it |
+| `jsonataExerciser.navigate.arrayIndexes` | `omit` | Inserted/copied input paths: `omit` drops array indexes, `include` keeps them |
 | `jsonataExerciser.profile.timeoutMs` | `120000` | Abort profiling after this many ms |
 | `jsonataExerciser.format.printWidth` | `80` | Formatter line width |
 | `jsonataExerciser.format.objectLayout` | `preserve` | `preserve` keeps multi-line objects if you broke after `{`, `expanded` breaks every key, `auto` collapses what fits |
@@ -189,6 +202,7 @@ Type `JSONata` in the Command Palette (`Ctrl+Shift+P`).
 * JSONata *bindings* supplied by a host application are not exposed, so such `$functions` show an "unknown function" warning.
 * The Exerciser targets the bundled JSONata 2.x. Your production runtime may behave differently (another version or a non-JavaScript port).
 * Large inputs (several MB) are re-parsed on every keystroke; raise `debounceMs` if typing lags.
+* **After updating the extension, reload the window** (use the *Reload Window* / *Restart Extensions* prompt, or `Developer: Reload Window`). A running window can keep pointing at files of the old version, so the Exerciser, the demo picker or the evaluator may not start until you reload. The extension shows a *Reload Window* prompt when it detects this. If the three panes were open during the update, reload once and use **JSONata: Open Exerciser** if they do not resume on their own.
 
 ## Development
 

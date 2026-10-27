@@ -1,5 +1,21 @@
 # Changelog
 
+## 1.6.2
+
+- The *Open JSONata Exerciser* title-bar button is no longer shown on the result pane, where it had no effect.
+
+## 1.6.1
+
+- Fix: opening the Exerciser or a demo right after a restart could collide with the automatic restore of the previous session. Opens are now queued, and the automatic restore never overrides something you opened.
+- Fix: a failure while registering the scratch file systems (seen right after an update) no longer leaves all commands unregistered; a *Reload Window* prompt is shown instead.
+- New: if the evaluator cannot start after an update, a *Reload Window* prompt appears.
+- Docs: known issue about reloading the window after an update.
+
+## 1.6.0
+
+- **Result-to-expression navigation:** click a value in the result pane and the part of the expression that produced it is highlighted. *JSONata: Reveal Expression Part for Result Value* (`Ctrl+Alt+R`) steps through alternative candidates. Setting `navigate.live`.
+- **Input-to-expression paths:** right-click a value or key in a JSON editor and choose *Insert JSONata Path into Expression* or *Copy JSONata Path of Value at Cursor*. Setting `navigate.arrayIndexes`.
+
 ## 1.5.2
 
 - README rewritten: hero section with badges, feature overview, screenshots for every major feature, and a complete list of capabilities.

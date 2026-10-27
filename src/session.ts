@@ -219,7 +219,23 @@ export class SessionManager implements vscode.Disposable {
     await this.open({ ...patch });
   }
 
-  async open(opts: { demo?: Demo; inputUri?: vscode.Uri; exprUri?: vscode.Uri } = {}): Promise<void> {
+  /** Serializes open() calls: a restart-resume, a demo and a context-menu click must not interleave. */
+  private openQueue: Promise<void> = Promise.resolve();
+  private openPending = 0;
+
+  open(opts: { demo?: Demo; inputUri?: vscode.Uri; exprUri?: vscode.Uri } = {}): Promise<void> {
+    this.openPending++;
+    const run = this.openQueue.then(() => this.openNow(opts));
+    this.openQueue = run.then(
+      () => undefined,
+      () => undefined
+    );
+    return run.finally(() => {
+      this.openPending--;
+    });
+  }
+
+  private async openNow(opts: { demo?: Demo; inputUri?: vscode.Uri; exprUri?: vscode.Uri }): Promise<void> {
     this.status.text = '$(sync~spin) JSONata: opening...';
     this.status.show();
     try {
@@ -314,7 +330,7 @@ export class SessionManager implements vscode.Disposable {
    * restored, re-attach to whatever input / expression tabs are showing and resume live evaluation.
    */
   async resumeFromTabs(): Promise<void> {
-    if (this.active) return;
+    if (this.active || this.openPending > 0) return; // the user already opened something
     const groups = vscode.window.tabGroups.all;
     const hadResult = groups.some((g) =>
       g.tabs.some((t) => t.input instanceof vscode.TabInputText && t.input.uri.scheme === ResultContent.scheme)
@@ -326,6 +342,22 @@ export class SessionManager implements vscode.Disposable {
       return undefined;
     };
     await this.open({ inputUri: pick(vscode.ViewColumn.One, 'json'), exprUri: pick(vscode.ViewColumn.Two, 'expr') });
+  }
+
+  private reloadHinted = false;
+
+  /** After an update without a window reload the old extension host points at removed files. */
+  private hintReloadIfStale(r: EvalResult): void {
+    if (this.reloadHinted || r.status !== 'error' || !/^Evaluator (crashed|stopped)/.test(r.error.message)) return;
+    this.reloadHinted = true;
+    void vscode.window
+      .showWarningMessage(
+        'The JSONata evaluator could not start. This usually happens right after an extension update. Reload the window to finish the update.',
+        'Reload Window'
+      )
+      .then((c) => {
+        if (c) void vscode.commands.executeCommand('workbench.action.reloadWindow');
+      });
   }
 
   /** Back to the virtual scratch input/expression. */
@@ -489,6 +521,7 @@ export class SessionManager implements vscode.Disposable {
     if (r.status === 'cancelled' || run !== this.runId) return r; // superseded by a newer keystroke
 
     this._last = r;
+    this.hintReloadIfStale(r);
     this.render(this.renderResult(r));
     this.diag.setRuntime(this.exprUri, r, expression);
     this.updateStatus(r);
