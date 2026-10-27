@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.7.2
+
+- The *Open Exerciser with Demo...* (beaker) button is shown again in the title bar of JSON editors, next to *Open JSONata Exerciser*. It is not shown on the result pane.
+
 ## 1.7.1
 
 - Fix: accepting a function completion such as `$round` replaced the typed text with `(number)`. The snippet's leading `$` was read as a snippet variable; it is now escaped.
