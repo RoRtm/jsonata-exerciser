@@ -2,7 +2,7 @@
   "name": "jsonata-exerciser",
   "displayName": "JSONata Exerciser",
   "description": "Local, real-time JSONata playground and debugger for VS Code: live output, IntelliSense, validation, formatter, demos, online help and Copilot / Claude integration.",
-  "version": "1.7.3",
+  "version": "1.9.1",
   "publisher": "ro-rtm",
   "license": "MIT",
   "icon": "images/icon.png",
@@ -220,6 +220,32 @@
         "command": "jsonataExerciser.revealSource",
         "title": "Reveal Expression Part for Result Value",
         "category": "JSONata"
+      },
+      {
+        "command": "jsonataExerciser.openTests",
+        "title": "Open Test Cases (window to the right)",
+        "category": "JSONata",
+        "icon": "$(checklist)"
+      },
+      {
+        "command": "jsonataExerciser.runTests",
+        "title": "Run Test Cases of Expression",
+        "category": "JSONata"
+      },
+      {
+        "command": "jsonataExerciser.addTestCase",
+        "title": "Add Current Input and Result as Test Case",
+        "category": "JSONata"
+      },
+      {
+        "command": "jsonataExerciser.exportDemo",
+        "title": "Export Demo with Test Cases to Folder...",
+        "category": "JSONata"
+      },
+      {
+        "command": "jsonataExerciser.copyTestCommand",
+        "title": "Copy CI Test Command (command line runner)",
+        "category": "JSONata"
       }
     ],
     "keybindings": [
@@ -269,7 +295,7 @@
       "editor/title": [
         {
           "command": "jsonataExerciser.run",
-          "when": "(resourceLangId == json || resourceLangId == jsonc) && resourceScheme != jsonata-result",
+          "when": "(resourceLangId == json || resourceLangId == jsonc) && resourceScheme != jsonata-result && resourceFilename =~ /^(?!.*\\.test\\.json$)/",
           "group": "navigation@1"
         },
         {
@@ -283,19 +309,24 @@
           "group": "navigation@2"
         },
         {
-          "command": "jsonataExerciser.openDemo",
+          "command": "jsonataExerciser.openTests",
           "when": "resourceLangId == jsonata",
           "group": "navigation@3"
         },
         {
           "command": "jsonataExerciser.openDemo",
-          "when": "(resourceLangId == json || resourceLangId == jsonc) && resourceScheme != jsonata-result",
+          "when": "resourceLangId == jsonata",
+          "group": "navigation@4"
+        },
+        {
+          "command": "jsonataExerciser.openDemo",
+          "when": "(resourceLangId == json || resourceLangId == jsonc) && resourceScheme != jsonata-result && resourceFilename =~ /^(?!.*\\.test\\.json$)/",
           "group": "navigation@2"
         },
         {
           "command": "jsonataExerciser.openHelp",
           "when": "resourceLangId == jsonata",
-          "group": "navigation@4"
+          "group": "navigation@5"
         }
       ],
       "explorer/context": [
@@ -433,6 +464,16 @@
           "type": "boolean",
           "default": true,
           "description": "Suggest the values found in the input JSON when typing a filter such as orders[status='."
+        },
+        "jsonataExerciser.tests.live": {
+          "type": "boolean",
+          "default": true,
+          "description": "Re-run the test cases of the expression in the Exerciser whenever it is evaluated and show the result above the expression."
+        },
+        "jsonataExerciser.tests.codeLens": {
+          "type": "boolean",
+          "default": true,
+          "description": "Show the test summary and actions (CodeLens) at the top of .jsonata files and the Exerciser expression."
         },
         "jsonataExerciser.navigate.live": {
           "type": "boolean",
@@ -643,6 +684,40 @@
             "inputFile": {
               "type": "string",
               "description": "Path of a JSON file (optional)."
+            }
+          }
+        }
+      },
+      {
+        "name": "jsonata_runTests",
+        "toolReferenceName": "jsonataRunTests",
+        "displayName": "Run JSONata test cases",
+        "userDescription": "Run test cases (input and expected output) against a JSONata expression.",
+        "modelDescription": "Runs test cases against a JSONata expression locally and returns PASS/FAIL per case with a diff of what differs. Pass `testFile` (name.test.json; the sibling name.jsonata is used) or `expression`/`expressionFile` plus `cases` (JSON text: {\"cases\":[{\"name\":\"...\",\"input\":{...} or \"inputFile\":\"./data.json\",\"expected\":... | \"expectUndefined\":true | \"expectError\":\"T2002\"}]}). Use it to verify an expression against all cases before you report it as finished, and to refactor safely.",
+        "canBeReferencedInPrompt": true,
+        "icon": "$(beaker)",
+        "tags": [
+          "jsonata",
+          "json"
+        ],
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "expression": {
+              "type": "string",
+              "description": "The JSONata expression."
+            },
+            "expressionFile": {
+              "type": "string",
+              "description": "Path of a .jsonata file instead of `expression`."
+            },
+            "testFile": {
+              "type": "string",
+              "description": "Path of a name.test.json file."
+            },
+            "cases": {
+              "type": "string",
+              "description": "Test cases as JSON text (an array or {\"cases\": [...]})."
             }
           }
         }

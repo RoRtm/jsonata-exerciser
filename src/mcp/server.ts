@@ -13,6 +13,8 @@ import { describeStructure } from '../core/schema';
 import { inspectPart } from '../core/inspectpart';
 import { formatProfileReport, scaleArrays } from '../core/profile';
 import { CHEATSHEET, DIRECTIVES } from '../core/cheatsheet';
+import { failed, formatFileRun, runTestFile } from '../core/testfiles';
+import { formatReport, parseTestFile, runCases } from '../core/testing';
 
 const evaluator = new Evaluator();
 const server = new McpServer({ name: 'jsonata-exerciser', version: '1.0.1' });
@@ -95,6 +97,48 @@ tool(
     } catch (e: any) {
       return text(String(e.message ?? e), true);
     }
+  }
+);
+
+tool(
+  'jsonata_run_tests',
+  {
+    title: 'Run JSONata test cases',
+    description:
+      'Run test cases against a JSONata expression locally. Either pass `test_file` (a *.test.json next to the expression; the sibling .jsonata is used unless `expression`/`expression_file` is given) or `cases` (JSON string: {"cases":[{"name","input" or "inputFile","expected" | "expectUndefined" | "expectError"}]}). Returns PASS/FAIL per case with a diff of what differs. Use it to verify an expression before reporting it as finished.',
+    inputSchema: {
+      expression: z.string().optional(),
+      expression_file: z.string().optional(),
+      test_file: z.string().optional().describe('Path of a name.test.json file'),
+      cases: z.string().optional().describe('Test cases as JSON text (an array or {"cases": [...]})')
+    }
+  },
+  async ({ expression, expression_file, test_file, cases }) => {
+    if (test_file && expression === undefined) {
+      const r = await runTestFile(evaluator, test_file, { expressionFile: expression_file });
+      return text(formatFileRun(r), failed(r));
+    }
+    try {
+      if (expression === undefined && expression_file) expression = await fs.readFile(expression_file, 'utf8');
+    } catch (e: any) {
+      return text(`Cannot read expression_file: ${e.message}`, true);
+    }
+    if (expression === undefined) return text('Provide `test_file`, or `expression`/`expression_file` together with `cases`.', true);
+    let source = cases;
+    try {
+      if (source === undefined && test_file) source = await fs.readFile(test_file, 'utf8');
+    } catch (e: any) {
+      return text(`Cannot read test_file: ${e.message}`, true);
+    }
+    if (source === undefined) return text('Provide `cases` or `test_file`.', true);
+    const parsed = parseTestFile(source);
+    if (parsed.cases.length === 0) return text(parsed.problems.join('\n') || 'No test cases found.', true);
+    const base = test_file ? (await import('node:path')).dirname(test_file) : process.cwd();
+    const outcomes = await runCases(evaluator, expression, parsed.cases, {
+      loadInput: async (c) => (c.inputFile ? fs.readFile((await import('node:path')).resolve(base, c.inputFile), 'utf8') : c.input !== undefined ? JSON.stringify(c.input) : undefined)
+    });
+    const report = formatReport(outcomes) + (parsed.problems.length ? '\n' + parsed.problems.map((x) => `warning: ${x}`).join('\n') : '');
+    return text(report, outcomes.some((o) => o.status !== 'pass'));
   }
 );
 

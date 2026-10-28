@@ -1,5 +1,26 @@
 # Changelog
 
+## 1.9.1
+
+- Fix: the JSONata and demo buttons were still shown on `*.test.json` files because the `when` clause used an operator VS Code does not support (`!~`). It now uses a valid regular expression, and a test checks all `when` clauses.
+- Fix: after an update, clicking the JSONata button could do nothing. Opens can no longer block each other for good (a stuck open is abandoned after 25 s with a *Reload Window* hint), command errors are shown instead of swallowed, and every open is logged in the new output channel *JSONata Exerciser* (View > Output) so a recurring case can be diagnosed.
+- The test window also works for the scratch expression of an opened JSON file: if `<input>.test.json` exists next to the input it opens that, otherwise a new file named after the input is created in memory (not saved): the current input and result as first case, or the commented structure skeleton when the result is empty or failing. `Ctrl+S` offers the matching file name in the input's folder; the expression's Save dialog suggests `<input>.jsonata`. Tests of a demo no longer apply once you open your own JSON file.
+- Exported demos name their input file `<demo>.json` instead of `<demo>.input.json`; test files keep `.test.json`.
+
+## 1.9.0
+
+- **Test window button:** a checklist button in the title bar of `.jsonata` editors opens the test file in a full-height column to the right of the three panes. A missing file is created: the current input and result become the first case when the expression works; for an empty or failing result the file starts with the input structure as comments and a case skeleton.
+- *Add Current Input and Result as Test Case* now keeps comments and formatting of an existing test file instead of refusing to rewrite it.
+- Fix: opening a `*.test.json` file while the Exerciser is open no longer turns it into the input pane; the Exerciser buttons are hidden on test files.
+
+## 1.8.0
+
+- **Test cases:** `name.test.json` next to `name.jsonata` holds cases (input or `inputFile`, `expected` / `expectUndefined` / `expectError`, optional `tolerance`). A CodeLens above the expression shows the live result (`3/3 tests passing`), the Testing view lists and runs the cases with diffs for failures, and *Add Current Input and Result as Test Case* creates cases from what the Exerciser shows.
+- **Demos ship with test cases** (31 cases for the 13 demos, including edge cases such as empty input and JSONata's single-item unwrapping). They run live in the Exerciser; *Export Demo with Test Cases to Folder...* writes the demo as `.jsonata`, input and `.test.json` files.
+- **CI runner:** `dist/test-cli.js` runs all `*.test.json` files (exit code 1 on failures, `--json` output); *Copy CI Test Command* gives the command with the installed path.
+- **AI:** new tool `#jsonataRunTests` (MCP: `jsonata_run_tests`); the directives and generated instruction files tell assistants to run existing test files after every change.
+- Settings: `tests.live`, `tests.codeLens`.
+
 ## 1.7.3
 
 - Fix: README image with brackets in its alt text did not render.

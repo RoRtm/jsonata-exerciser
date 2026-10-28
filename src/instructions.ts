@@ -4,7 +4,7 @@ import { CHEATSHEET, DIRECTIVES } from './core/cheatsheet';
 const BEGIN = '<!-- jsonata-exerciser:begin -->';
 const END = '<!-- jsonata-exerciser:end -->';
 
-const TOOL_REFS = ['jsonataExerciserState', 'jsonataInputStructure', 'jsonataEvaluate', 'jsonataInspect', 'jsonataProfile', 'jsonataValidate', 'jsonataGuide', 'jsonataExerciserUpdate'];
+const TOOL_REFS = ['jsonataExerciserState', 'jsonataInputStructure', 'jsonataEvaluate', 'jsonataInspect', 'jsonataProfile', 'jsonataValidate', 'jsonataRunTests', 'jsonataGuide', 'jsonataExerciserUpdate'];
 
 const instructionsFile = `---
 description: JSONata conventions and workflow (JSONata is not JavaScript)
@@ -37,7 +37,8 @@ This project uses JSONata (https://docs.jsonata.org), which is NOT JavaScript. W
 
 1. Look at the data first. With the JSONata Exerciser MCP server / VS Code tools use \`jsonata_describe_input\` (or the \`jsonataInputStructure\` tool) on the JSON file, then write paths with the exact key names.
 2. Test every expression with \`jsonata_evaluate\` (pass \`input_file\` / \`inputFile\`) and iterate until the result is what the user wants. Never present an untested expression.
-3. Return the final expression in one \`\`\`jsonata block plus a short sample of the output; ask for an example output if the target shape is unclear.
+3. If a \`name.test.json\` file sits next to the expression, run it with \`jsonata_run_tests\` (or the \`jsonataRunTests\` tool) after every change; never present an expression while a case fails.
+4. Return the final expression in one \`\`\`jsonata block plus a short sample of the output; ask for an example output if the target shape is unclear.
 4. Call \`jsonata_guide\` if unsure about syntax: equality is \`=\`, string concatenation is \`&\`, no loops/return/arrow functions, arrays flatten in paths, \`items.{...}\` maps to an array, \`items{key: value}\` groups into one object.
 ${END}
 `;

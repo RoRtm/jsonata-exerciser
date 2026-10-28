@@ -9,6 +9,7 @@ import { addAiInstructions } from './instructions';
 import { Inspector } from './inspect';
 import { Profiler } from './profiler';
 import { Navigator } from './navigate';
+import { TestManager } from './testing';
 
 export function activate(ctx: vscode.ExtensionContext): void {
   const memfs = new MemFs();
@@ -18,10 +19,12 @@ export function activate(ctx: vscode.ExtensionContext): void {
   const inspector = new Inspector(session);
   const profiler = new Profiler(session);
   const navigator = new Navigator(session);
+  const tests = new TestManager(ctx, session);
 
   // Scratch files vanish with the process; restored editor tabs get the last saved content instead of an error.
   memfs.fallback = (uri) => {
     const saved = ctx.globalState.get<{ input?: string; expression?: string }>(STATE_KEY);
+    if (/\.test\.json$/.test(uri.path)) return '// These test cases were only kept in memory and are gone after a restart.\n// Use the test button above the expression to create them again.\n{ "cases": [] }\n';
     if (uri.path === '/input.json') return saved?.input ?? demoInputText(DEMOS[0]);
     if (uri.path === '/expression.jsonata') return saved?.expression ?? DEMOS[0].expression;
     return undefined;
@@ -51,12 +54,25 @@ export function activate(ctx: vscode.ExtensionContext): void {
     inspector,
     profiler,
     navigator,
+    tests,
     ...registerProviders(session),
     ...registerAi(ctx, session)
   );
 
+  // Errors in a command are shown (and logged) instead of disappearing: a toolbar click that "does nothing" is the worst feedback.
   const reg = (id: string, fn: (...args: any[]) => unknown) =>
-    ctx.subscriptions.push(vscode.commands.registerCommand(id, fn));
+    ctx.subscriptions.push(
+      vscode.commands.registerCommand(id, async (...args: any[]) => {
+        try {
+          return await fn(...args);
+        } catch (e: any) {
+          session.trace(`${id} failed: ${e?.stack ?? e}`);
+          void vscode.window.showErrorMessage(`JSONata Exerciser: ${e?.message ?? e}`, 'Show Log').then((c) => {
+            if (c) session.log.show();
+          });
+        }
+      })
+    );
 
   reg('jsonataExerciser.open', () => session.openFrom());
   const runHandler = () => {
@@ -69,7 +85,10 @@ export function activate(ctx: vscode.ExtensionContext): void {
   reg('jsonataExerciser.runExpression', runHandler);
   reg('jsonataExerciser.openWith', (uri?: vscode.Uri) => session.openFrom(uri instanceof vscode.Uri ? uri : undefined));
   reg('jsonataExerciser.bindInput', (uri?: vscode.Uri) => session.bindInput(uri instanceof vscode.Uri ? uri : undefined));
-  reg('jsonataExerciser.saveAs', (uri?: vscode.Uri) => session.saveScratchAs(uri instanceof vscode.Uri ? uri : undefined));
+  reg('jsonataExerciser.saveAs', (uri?: vscode.Uri) => {
+    const target = uri instanceof vscode.Uri ? uri : vscode.window.activeTextEditor?.document.uri;
+    return tests.isScratchTest(target) ? tests.saveScratchTest(target) : session.saveScratchAs(target);
+  });
   reg('jsonataExerciser.resetScratch', () => session.resetScratch());
 
   reg('jsonataExerciser.openDemo', async () => {
@@ -158,6 +177,15 @@ export function activate(ctx: vscode.ExtensionContext): void {
   reg('jsonataExerciser.copyPath', () => navigator.copyPath());
   reg('jsonataExerciser.insertPath', () => navigator.insertPath());
   reg('jsonataExerciser.revealSource', () => navigator.revealSource());
+  reg('jsonataExerciser.runTests', (uri?: vscode.Uri) => tests.runTests(uri instanceof vscode.Uri ? uri : undefined));
+  reg('jsonataExerciser.openTests', () => tests.openTests());
+  reg('jsonataExerciser.addTestCase', () => tests.addTestCase());
+  reg('jsonataExerciser.exportDemo', () => tests.exportDemo());
+  reg('jsonataExerciser.copyTestCommand', async () => {
+    const cli = vscode.Uri.joinPath(ctx.extensionUri, 'dist', 'test-cli.js').fsPath;
+    await vscode.env.clipboard.writeText(`node "${cli}" .`);
+    void vscode.window.showInformationMessage('CI test command copied. It runs every *.test.json below the current folder; exit code 1 means failures. See README > "Test cases".');
+  });
   reg('jsonataExerciser.addAiInstructions', () => addAiInstructions());
 
   reg('jsonataExerciser.openTryOnline', () => openUrl('https://try.jsonata.org/'));

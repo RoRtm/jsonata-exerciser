@@ -21,6 +21,7 @@ Live results, step-through inspection, a performance profiler, IntelliSense, a f
 | --- | --- |
 | **Live as you type** | Three linked panes like [try.jsonata.org](https://try.jsonata.org/): input, expression, result. Updates on every keystroke. |
 | **See inside an expression** | Put the cursor on any part and see what it evaluates to, per item and step by step. |
+| **Test cases** | Keep input and expected output next to an expression in `name.test.json`. Results show above the expression, in the Test Explorer and in CI. Every demo ships with test cases. |
 | **Click your way around** | Right-click a field in the input JSON to insert its JSONata path. Click a value in the result and the part of the expression that produced it lights up. |
 | **Find the slow part** | Heat map, ranked report and concrete fixes for slow expressions, optionally on simulated larger data. |
 | **Works with your project** | Right-click any JSON or `.jsonata` file. Expressions remember their input file. |
@@ -60,6 +61,34 @@ $sum(orders.items.(price * qty))
 * **Inspect Larger Expression** (`Ctrl+Alt+Shift+J`) widens the selection: `price` → `price * qty` → `orders.items.(price * qty)` → everything.
 * Keys: **Inspect Value** `Ctrl+Alt+J`; toggle live hints with `inspect.live`.
 
+### Test cases
+
+Keep examples (input and expected output) next to the expression and re-run them on every change, so you can refactor without breaking anything.
+
+![Four columns: input JSON, expression with test CodeLens, result, and the test file with an inline failure and an expected-versus-actual diff](images/jsonata-testing.png)
+
+The screenshot shows a failing case: the CodeLens above the expression reads `1 of 3 tests not passing`, and the test file on the right marks the failing case with an inline diff of expected and actual (here the Fibonacci list ends in `7` instead of `8`).
+
+```jsonc
+// orders.test.json, next to orders.jsonata
+{
+  "cases": [
+    { "name": "two orders", "inputFile": "./orders.json", "expected": { "orderCount": 2, "revenue": 531.9 } },
+    { "name": "no orders", "input": { "orders": [] }, "expectUndefined": true },
+    { "name": "bad data", "input": { "price": 10, "label": "abc" }, "expectError": "T2002" }
+  ]
+}
+```
+
+* **Test window:** the checklist button in the title bar of the expression editor opens the test file in a full-height column to the right of the three panes. If it does not exist yet it is created: when the expression works, the current input and result become the first case; when the result is empty or the expression fails, the file starts with the structure of the current input as comments and a case to fill in (it fails on purpose until you replace the `null` placeholder). This also works for the scratch expression you typed after opening a JSON file with the J: button: the test file is named after the input (`orders.json` gives `orders.test.json`), refers to it as `inputFile`, and stays in memory, so nothing is written until you press `Ctrl+S`. The Save dialog suggests the matching name in the input's folder (and `orders.jsonata` for the expression), and the tests are picked up from there next time.
+* **Live result above the expression:** a CodeLens such as `✔ 3/3 tests passing` (or `2 of 3 tests not passing`) updates whenever the Exerciser evaluates. Click it to run all cases and see a report; `JSONata: Run Test Cases of Expression` does the same.
+* **Test Explorer:** every `*.test.json` shows up in the Testing view with run buttons in the gutter of the test file. Failures show a diff of expected and actual value.
+* **Add cases from what you see:** `JSONata: Add Current Input and Result as Test Case` appends the Exerciser's input (inline, or as `inputFile` when the input is a file) and its current result as the expected value. It creates `name.test.json` if needed.
+* **Case options:** `input` or `inputFile`; one of `expected`, `expectUndefined` or `expectError` (`true` or an error code such as `"T2002"`); optional `tolerance` for floating point numbers and `description`. Comments are allowed in the file.
+* **Demos come with test cases:** each demo has a case for its own data plus edge cases (empty input, a single item, and so on), some of which show how JSONata unwraps single-item arrays. Open a demo and the CodeLens shows `3/3 tests passing`; edit the expression and watch which cases fail. **JSONata: Export Demo with Test Cases to Folder...** writes the `.jsonata`, input and `.test.json` files so you can run them in CI.
+* **CI:** `node dist/test-cli.js <folder>` (use **JSONata: Copy CI Test Command** to get the exact command with the installed path) runs every `*.test.json`, prints a report and exits with code 1 on failures; add `--json` for machine-readable output. No network, same official library.
+* **For AI assistants:** the tool `#jsonataRunTests` (MCP: `jsonata_run_tests`) runs a test file or inline cases, so Copilot and Claude can check their expression against all cases before reporting it as done.
+
 ### Navigate between data and expression
 
 * **Input to expression:** right-click a value or key in the input JSON and choose **Insert JSONata Path into Expression** (or **Copy JSONata Path of Value at Cursor**). Array indexes are dropped because JSONata maps over arrays (`orders.items.price`); names with spaces or symbols get backticks (`` orders.`my key` ``). Setting `navigate.arrayIndexes` = `include` keeps them (`orders[1].items[0].price`).
@@ -98,8 +127,8 @@ Filter values come from the input too. Typing `orders[id=` lists the `id` values
 | | |
 | --- | --- |
 | **`@jsonata` chat participant** | `/write`, `/explain`, `/fix`. Sees your data and expression, answers with a `jsonata` block, verifies it locally and offers **Apply to Exerciser**. |
-| **Agent-mode tools** | `#jsonataEvaluate`, `#jsonataValidate`, `#jsonataInspect`, `#jsonataProfile`, `#jsonataInputStructure`, `#jsonataGuide`, `#jsonataExerciserState`, `#jsonataExerciserUpdate`. |
-| **Claude via MCP** | Bundled stdio server for Claude Code, Claude Desktop, Cursor and others: evaluate, inspect, profile, validate, format, function help, describe input, guide. |
+| **Agent-mode tools** | `#jsonataEvaluate`, `#jsonataValidate`, `#jsonataInspect`, `#jsonataProfile`, `#jsonataRunTests`, `#jsonataInputStructure`, `#jsonataGuide`, `#jsonataExerciserState`, `#jsonataExerciserUpdate`. |
+| **Claude via MCP** | Bundled stdio server for Claude Code, Claude Desktop, Cursor and others: evaluate, inspect, profile, run tests, validate, format, function help, describe input, guide. |
 | **Project directives** | One command writes Copilot instruction files, a `/jsonata` prompt file and `CLAUDE.md` / `AGENTS.md` sections. |
 
 ![Copilot Chat showing a JSONata expression and verified product-price output beside the input orders](images/copilot-support.png)
@@ -137,7 +166,7 @@ AI answers can be wrong. The local check catches syntax errors and shows real ou
 
 ## Claude (MCP)
 
-Tools: `jsonata_evaluate`, `jsonata_inspect`, `jsonata_profile`, `jsonata_validate`, `jsonata_format`, `jsonata_function_help`, `jsonata_describe_input`, `jsonata_guide`.
+Tools: `jsonata_evaluate`, `jsonata_inspect`, `jsonata_profile`, `jsonata_run_tests`, `jsonata_validate`, `jsonata_format`, `jsonata_function_help`, `jsonata_describe_input`, `jsonata_guide`.
 
 1. Run **JSONata: Copy MCP Server Config (Claude Code / Claude Desktop)** for snippets with the correct absolute path.
 2. **Claude Code:** `claude mcp add jsonata -- node "<path>/mcp-server.js"`, or put the `mcpServers` JSON into a project `.mcp.json`.
@@ -164,6 +193,11 @@ Type `JSONata` in the Command Palette (`Ctrl+Shift+P`).
 | Insert JSONata Path into Expression | Right-click a value in a JSON editor |
 | Copy JSONata Path of Value at Cursor | Right-click a value in a JSON editor |
 | Reveal Expression Part for Result Value | `Ctrl+Alt+R` in the result pane, right-click, or just click a value |
+| Open Test Cases (window to the right) | Checklist button in `.jsonata` editors |
+| Run Test Cases of Expression | CodeLens above the expression, Command Palette |
+| Add Current Input and Result as Test Case | CodeLens above the expression (when a test file exists) |
+| Export Demo with Test Cases to Folder... | CodeLens above a demo expression |
+| Copy CI Test Command | |
 | Profile Expression (find slow parts) | Gauge icon in `.jsonata` editors, context menu |
 | Clear Profile Highlights | |
 | Format Expression | `Shift+Alt+F` |
@@ -184,6 +218,8 @@ Type `JSONata` in the Command Palette (`Ctrl+Shift+P`).
 | `jsonataExerciser.evaluationTimeoutMs` | `5000` | Abort long-running evaluations |
 | `jsonataExerciser.inspect.live` | `true` | Inline value of the part under the cursor |
 | `jsonataExerciser.inspect.maxLength` | `80` | Maximum length of the inline hint |
+| `jsonataExerciser.tests.live` | `true` | Re-run the test cases whenever the Exerciser evaluates and show the summary above the expression |
+| `jsonataExerciser.tests.codeLens` | `true` | Show the test summary and actions at the top of `.jsonata` files |
 | `jsonataExerciser.navigate.live` | `true` | Clicking a result value highlights the part of the expression that produced it |
 | `jsonataExerciser.navigate.arrayIndexes` | `omit` | Inserted/copied input paths: `omit` drops array indexes, `include` keeps them |
 | `jsonataExerciser.profile.timeoutMs` | `120000` | Abort profiling after this many ms |

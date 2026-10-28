@@ -1,12 +1,13 @@
 import * as vscode from 'vscode';
 import * as path from 'node:path';
 import { Evaluator, EvalResult, describeResult } from './core/evaluator';
-import { Demo, DEMOS, demoInputText } from './core/demos';
+import { Demo, DEMOS, demoById, demoInputText } from './core/demos';
 import { parseInputComment, withInputComment } from './core/bindings';
 import { MemFs, ResultContent } from './memfs';
 import type { DiagnosticsManager } from './providers';
 
 export const STATE_KEY = 'jsonataExerciser.lastSession';
+const DEMO_KEY = 'jsonataExerciser.lastDemo';
 const BINDINGS_KEY = 'jsonataExerciser.bindings';
 
 export interface SessionSnapshot {
@@ -38,6 +39,8 @@ export class SessionManager implements vscode.Disposable {
   inputUri = this.inputUriDefault;
   exprUri = this.exprUriDefault;
   active = false;
+  /** The demo the scratch expression was started from (its test cases are shown next to the expression). */
+  currentDemo?: Demo;
 
   private evaluator = new Evaluator({ supersede: true });
   private timer?: NodeJS.Timeout;
@@ -74,6 +77,8 @@ export class SessionManager implements vscode.Disposable {
         void this.followEditor(ed);
       })
     );
+    const savedDemo = this.ctx.globalState.get<string>(DEMO_KEY);
+    if (savedDemo) this.currentDemo = demoById(savedDemo);
     this.updateStatusVisibility();
     // Start the evaluator thread in the background so the first evaluation is instant.
     const warm = setTimeout(() => this.evaluator.warmUp(), 500);
@@ -223,9 +228,26 @@ export class SessionManager implements vscode.Disposable {
   private openQueue: Promise<void> = Promise.resolve();
   private openPending = 0;
 
+  /** Diagnostics for "nothing happens" reports: View > Output > JSONata Exerciser. */
+  readonly log = vscode.window.createOutputChannel('JSONata Exerciser');
+
+  trace(msg: string): void {
+    this.log.appendLine(`${new Date().toISOString().slice(11, 23)}  ${msg}`);
+  }
+
+  /**
+   * A step that never settles (for example an editor that is still being restored after an update)
+   * must not block every later click: a predecessor is waited for at most a few seconds, and one open
+   * is abandoned after a while with a hint instead of hanging silently.
+   */
   open(opts: { demo?: Demo; inputUri?: vscode.Uri; exprUri?: vscode.Uri } = {}): Promise<void> {
     this.openPending++;
-    const run = this.openQueue.then(() => this.openNow(opts));
+    const prev = this.openQueue;
+    const run = (async () => {
+      const waited = await Promise.race([prev.then(() => 'done'), new Promise<string>((r) => setTimeout(() => r('timeout'), 5000))]);
+      if (waited === 'timeout') this.trace('previous open still running after 5 s; continuing with this one');
+      await this.withCap(this.openNow(opts), 25000);
+    })();
     this.openQueue = run.then(
       () => undefined,
       () => undefined
@@ -235,15 +257,36 @@ export class SessionManager implements vscode.Disposable {
     });
   }
 
+  private async withCap(p: Promise<void>, ms: number): Promise<void> {
+    let timer: NodeJS.Timeout | undefined;
+    const outcome = await Promise.race([
+      p.then(() => 'ok'),
+      new Promise<string>((r) => {
+        timer = setTimeout(() => r('timeout'), ms);
+      })
+    ]).finally(() => timer && clearTimeout(timer));
+    if (outcome !== 'timeout') return;
+    this.trace(`open did not finish within ${ms / 1000} s`);
+    void vscode.window
+      .showWarningMessage('Opening the JSONata Exerciser is taking unusually long. If this follows an extension update, reload the window.', 'Reload Window', 'Show Log')
+      .then((c) => {
+        if (c === 'Reload Window') void vscode.commands.executeCommand('workbench.action.reloadWindow');
+        if (c === 'Show Log') this.log.show();
+      });
+  }
+
   private async openNow(opts: { demo?: Demo; inputUri?: vscode.Uri; exprUri?: vscode.Uri }): Promise<void> {
     this.status.text = '$(sync~spin) JSONata: opening...';
     this.status.show();
+    const t0 = Date.now();
+    this.trace(`open: demo=${opts.demo?.id ?? '-'} input=${opts.inputUri?.toString() ?? '-'} expression=${opts.exprUri?.toString() ?? '-'}`);
     try {
       await vscode.window.withProgress(
         { location: vscode.ProgressLocation.Window, title: 'JSONata Exerciser: opening...' },
         () => this.openCore(opts)
       );
     } finally {
+      this.trace(`open finished in ${Date.now() - t0} ms`);
       if (!this._last) this.updateStatus(undefined);
       this.updateStatusVisibility();
     }
@@ -257,11 +300,21 @@ export class SessionManager implements vscode.Disposable {
       this.exprUri = this.exprUriDefault;
       await this.setContent(this.inputUri, demoInputText(opts.demo));
       await this.setContent(this.exprUri, opts.demo.expression);
+      this.currentDemo = opts.demo;
+      void this.ctx.globalState.update(DEMO_KEY, opts.demo.id);
     } else {
       if (opts.inputUri) this.inputUri = opts.inputUri;
       else if (!wasActive) this.inputUri = this.inputUriDefault;
+      if (opts.inputUri && !this.isScratch(opts.inputUri) && this.currentDemo) {
+        this.currentDemo = undefined; // the demo's tests belong to the demo's data, not to your file
+        void this.ctx.globalState.update(DEMO_KEY, undefined);
+      }
       if (opts.exprUri) this.exprUri = opts.exprUri;
       else if (!wasActive) this.exprUri = this.exprUriDefault;
+      if (opts.exprUri && !this.isScratch(opts.exprUri) && this.currentDemo) {
+        this.currentDemo = undefined; // a real expression file replaces the demo
+        void this.ctx.globalState.update(DEMO_KEY, undefined);
+      }
 
       // A new expression file brings its bound input along (header comment or remembered link).
       if (opts.exprUri && !opts.inputUri) {
@@ -280,8 +333,10 @@ export class SessionManager implements vscode.Disposable {
 
     this.active = true;
     this.rememberBinding();
+    this.trace('showing panes');
     await this.showPanes();
     this.status.show();
+    this.trace('evaluating');
     await this.evaluateNow();
   }
 
@@ -300,6 +355,16 @@ export class SessionManager implements vscode.Disposable {
    * Scratch documents live in memory only. This writes one to a real file (Save dialog) and links the
    * Exerciser to that file, so Ctrl+S / Save As behave as users expect.
    */
+  /** Base name for files made from the scratch expression: the input file's name, or "expression". */
+  scratchBase(): string {
+    return this.inputUri.scheme === 'file' ? path.basename(this.inputUri.path).replace(/\.(jsonc?|json5)$/i, '') || 'expression' : 'expression';
+  }
+
+  /** Folder of the input file when it is a real file (a good place for files that belong to it). */
+  inputFolder(): vscode.Uri | undefined {
+    return this.inputUri.scheme === 'file' ? vscode.Uri.joinPath(this.inputUri, '..') : undefined;
+  }
+
   async saveScratchAs(uri?: vscode.Uri): Promise<void> {
     const target = uri ?? vscode.window.activeTextEditor?.document.uri;
     if (!target || !this.isScratch(target)) {
@@ -307,10 +372,10 @@ export class SessionManager implements vscode.Disposable {
       return;
     }
     const isExpr = target.toString() === this.exprUriDefault.toString();
-    const root = vscode.workspace.workspaceFolders?.[0]?.uri;
+    const root = this.inputFolder() ?? vscode.workspace.workspaceFolders?.[0]?.uri;
     const dest = await vscode.window.showSaveDialog({
       title: isExpr ? 'Save JSONata expression as' : 'Save input JSON as',
-      defaultUri: root ? vscode.Uri.joinPath(root, isExpr ? 'expression.jsonata' : 'input.json') : undefined,
+      defaultUri: root ? vscode.Uri.joinPath(root, isExpr ? `${this.scratchBase()}.jsonata` : 'input.json') : undefined,
       filters: isExpr ? { JSONata: ['jsonata'] } : { JSON: ['json'] },
       saveLabel: 'Save'
     });
@@ -407,6 +472,7 @@ export class SessionManager implements vscode.Disposable {
     const uri = ed.document.uri;
     if (uri.scheme === ResultContent.scheme || this.isSessionUri(uri)) return;
     if (uri.scheme !== 'file' && uri.scheme !== 'untitled' && uri.scheme !== MemFs.scheme) return;
+    if (/\.test\.json$/i.test(uri.path)) return; // test cases are not input data
     const kind = this.kindOf(uri);
 
     // A JSON / .jsonata file opened anywhere else (e.g. from the Explorer into the focused group)
@@ -630,5 +696,6 @@ export class SessionManager implements vscode.Disposable {
     this.evaluator.dispose();
     this.disposables.forEach((d) => d.dispose());
     this.emitter.dispose();
+    this.log.dispose();
   }
 }

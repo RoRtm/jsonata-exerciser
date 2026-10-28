@@ -22,7 +22,9 @@ const builds = [
   // Worker thread that evaluates JSONata (so runaway expressions can be killed)
   { ...common, entryPoints: ['src/core/worker.ts'], outfile: 'dist/worker.js' },
   // Standalone MCP server (Claude Code / Claude Desktop / any MCP client)
-  { ...common, entryPoints: ['src/mcp/server.ts'], outfile: 'dist/mcp-server.js' }
+  { ...common, entryPoints: ['src/mcp/server.ts'], outfile: 'dist/mcp-server.js' },
+  // Command line test runner for CI (node dist/test-cli.js <folder>)
+  { ...common, entryPoints: ['src/test-cli.ts'], outfile: 'dist/test-cli.js' }
 ];
 
 if (watch) {

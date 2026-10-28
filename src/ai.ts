@@ -4,6 +4,8 @@ import { Evaluator, describeResult } from './core/evaluator';
 import { analyze } from './core/analyze';
 import { describeStructure } from './core/schema';
 import { inspectPart } from './core/inspectpart';
+import { failed, formatFileRun, runTestFile } from './core/testfiles';
+import { formatReport, parseTestFile, runCases } from './core/testing';
 import { formatProfileReport, scaleArrays } from './core/profile';
 import { CHEATSHEET, DIRECTIVES } from './core/cheatsheet';
 import { FUNCTIONS } from './core/functions';
@@ -222,6 +224,34 @@ export function registerAi(ctx: vscode.ExtensionContext, session: SessionManager
           if (!parsed.ok) return toolText(`Input is not valid JSON: ${parsed.error}`);
           if (parsed.value === undefined) return toolText('Input is empty.');
           return toolText(`Structure of ${source}:\n\n${describeStructure(parsed.value)}`);
+        }
+      }),
+      vscode.lm.registerTool<{ expression?: string; expressionFile?: string; testFile?: string; cases?: string }>('jsonata_runTests', {
+        prepareInvocation: () => ({ invocationMessage: 'Running JSONata test cases' }),
+        async invoke(options) {
+          const i = options.input;
+          try {
+            if (i.testFile && i.expression === undefined) {
+              const r = await runTestFile(toolEvaluator, i.testFile, { expressionFile: i.expressionFile, timeoutMs: timeout() });
+              return toolText(formatFileRun(r));
+            }
+            let expression = i.expression;
+            if (expression === undefined && i.expressionFile) expression = await readFileText(i.expressionFile);
+            if (expression === undefined) return toolText('Provide "testFile", or "expression"/"expressionFile" together with "cases".');
+            const source = i.cases ?? (i.testFile ? await readFileText(i.testFile) : undefined);
+            if (source === undefined) return toolText('Provide "cases" or "testFile".');
+            const parsed = parseTestFile(source);
+            if (parsed.cases.length === 0) return toolText(parsed.problems.join('\n') || 'No test cases found.');
+            const path = await import('node:path');
+            const base = i.testFile ? path.dirname(i.testFile) : process.cwd();
+            const outcomes = await runCases(toolEvaluator, expression, parsed.cases, {
+              timeoutMs: timeout(),
+              loadInput: async (c) => (c.inputFile ? readFileText(path.resolve(base, c.inputFile)) : c.input !== undefined ? JSON.stringify(c.input) : undefined)
+            });
+            return toolText(formatReport(outcomes) + (parsed.problems.length ? '\n' + parsed.problems.map((x) => `warning: ${x}`).join('\n') : ''));
+          } catch (e: any) {
+            return toolText(`Cannot run tests: ${e.message}`);
+          }
         }
       }),
       vscode.lm.registerTool<Record<string, never>>('jsonata_guide', {

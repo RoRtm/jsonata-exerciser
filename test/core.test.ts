@@ -7,6 +7,11 @@ import { formatJsonata, FormatError } from '../src/core/format';
 import { fieldSuggestions, callContextAt, valueCompletion } from '../src/core/intel';
 import { DEMOS, demoInputText } from '../src/core/demos';
 import { FUNCTIONS, paramLabels } from '../src/core/functions';
+import { appendCaseText, testFileWithResult, testFileSkeleton, parseTestFile, runCases, runCase, summarize, diffValues, caseFromResult, appendCase, testPathFor, expressionPathFor, stripComments } from '../src/core/testing';
+import { testsForDemo } from '../src/core/demotests';
+import { findTestFiles, runTestFile } from '../src/core/testfiles';
+import * as os from 'node:os';
+import * as fsp from 'node:fs/promises';
 import { jsonNodeAt, toJsonataPath, matchResult, probeAllParts } from '../src/core/navigate';
 
 const workerPath = path.join(__dirname, '..', 'dist', 'worker.js');
@@ -439,5 +444,146 @@ describe('filter value suggestions', () => {
   test('not inside a predicate or comparison: no suggestions', () => {
     assert.equal(valueCompletion(data, "x := 'a"), undefined);
     assert.equal(valueCompletion(data, "orders.id = '"), undefined);
+  });
+});
+
+
+describe('test cases', () => {
+  test('every demo passes its own bundled test cases', async () => {
+    for (const d of DEMOS) {
+      const cases = testsForDemo(d);
+      assert.ok(cases.length >= 2, `${d.id} has demo data plus at least one edge case`);
+      const out = await runCases(ev, d.expression, cases);
+      for (const o of out) assert.equal(o.status, 'pass', `${d.id} / ${o.name}: ${o.message}`);
+    }
+  });
+
+  test('a changed expression makes demo tests fail with a readable diff', async () => {
+    const d = DEMOS.find((x) => x.id === 'paths')!;
+    const out = await runCases(ev, d.expression.replace('$count(orders)', '$count(orders) + 1'), testsForDemo(d));
+    assert.equal(out[0].status, 'fail');
+    assert.match(out[0].message!, /orderCount: expected 2, got 3/);
+    assert.ok(out[0].expectedText && out[0].actualText);
+  });
+
+  test('expectUndefined, expectError and tolerance', async () => {
+    const run = (c: any, expr: string, input: unknown) => runCase(ev, expr, { name: 'x', input, ...c });
+    assert.equal((await run({ expectUndefined: true }, 'a', {})).status, 'pass');
+    assert.equal((await run({ expectUndefined: true }, 'a', { a: 1 })).status, 'fail');
+    assert.equal((await run({ expectError: 'T2002' }, 'a + "x"', { a: 1 })).status, 'pass');
+    assert.equal((await run({ expectError: 'T2001' }, 'a + "x"', { a: 1 })).status, 'fail');
+    assert.equal((await run({ expectError: true }, 'a', { a: 1 })).status, 'fail');
+    assert.equal((await run({ expected: 0.3, tolerance: 1e-9 }, 'a + b', { a: 0.1, b: 0.2 })).status, 'pass');
+    assert.equal((await run({ expected: 0.3 }, 'a + b', { a: 0.1, b: 0.2 })).status, 'fail'); // floating point
+    assert.equal((await run({ expected: 1 }, '$sum(', {})).status, 'error'); // syntax error in the expression
+  });
+
+  test('parsing: comments, bare arrays and problems', () => {
+    const ok = parseTestFile('// header\n{ "cases": [ { "name": "a", /* c */ "expected": 1 } ] }');
+    assert.equal(ok.cases.length, 1);
+    assert.equal(ok.problems.length, 0);
+    assert.equal(parseTestFile('[ { "expected": 1 } ]').cases[0].name, 'Case 1');
+    assert.match(parseTestFile('{ "cases": [ { "name": "no outcome" } ] }').problems[0], /no "expected"/);
+    assert.match(parseTestFile('nonsense').problems[0], /Not valid JSON/);
+    assert.equal(stripComments('{"u":"http://x//y"} // c'), '{"u":"http://x//y"} ');
+  });
+
+  test('diffValues points at the differing paths', () => {
+    assert.deepEqual(diffValues({ a: [1, 2], b: 'x' }, { a: [1, 3], b: 'x' }), ['a[1]: expected 2, got 3']);
+    assert.ok(diffValues({ a: 1 }, { a: 1, z: 2 })[0].includes('z: unexpected key'));
+  });
+
+  test('cases can be created from the Exerciser result and appended safely', () => {
+    const c = caseFromResult({ name: 'n', input: { a: 1 }, result: { status: 'ok', text: '{"x":1}' } });
+    assert.deepEqual(c, { name: 'n', input: { a: 1 }, expected: { x: 1 } });
+    assert.equal(caseFromResult({ name: 'e', result: { status: 'empty' } }).expectUndefined, true);
+    assert.equal(caseFromResult({ name: 'e', inputFile: './i.json', result: { status: 'error', code: 'T2002' } }).expectError, 'T2002');
+    const t1 = appendCase(undefined, c);
+    const t2 = appendCase(t1, { name: 'second', expected: 2 });
+    assert.equal(parseTestFile(t2).cases.length, 2);
+    assert.throws(() => appendCase('// comment\n{"cases":[]}', c), /comments/);
+    assert.equal(testPathFor('/a/b/orders.jsonata'), '/a/b/orders.test.json');
+    assert.equal(expressionPathFor('/a/b/orders.test.json'), '/a/b/orders.jsonata');
+  });
+
+  test('test files on disk: inputFile, folder discovery and the summary', async () => {
+    const dir = await fsp.mkdtemp(path.join(os.tmpdir(), 'jsonata-tests-'));
+    try {
+      await fsp.writeFile(path.join(dir, 'sum.jsonata'), '$sum(items.price)');
+      await fsp.writeFile(path.join(dir, 'sum.input.json'), '{"items":[{"price":1},{"price":2}]}');
+      await fsp.writeFile(
+        path.join(dir, 'sum.test.json'),
+        JSON.stringify({ cases: [{ name: 'from file', inputFile: './sum.input.json', expected: 3 }, { name: 'inline', input: { items: [{ price: 5 }] }, expected: 5 }, { name: 'wrong', input: { items: [] }, expected: 1 }] })
+      );
+      await fsp.mkdir(path.join(dir, 'node_modules'));
+      await fsp.writeFile(path.join(dir, 'node_modules', 'x.test.json'), '{}');
+      const found = await findTestFiles(dir);
+      assert.equal(found.length, 1);
+      const r = await runTestFile(ev, found[0]);
+      assert.deepEqual(summarize(r.outcomes), { total: 3, passed: 2, failed: 1, errored: 0 });
+      const missing = await runTestFile(ev, path.join(dir, 'ghost.test.json'));
+      assert.ok(missing.error);
+    } finally {
+      await fsp.rm(dir, { recursive: true, force: true });
+    }
+  });
+});
+
+
+describe('generated test files', () => {
+  test('a working transformation becomes the first case, with a help header', async () => {
+    const c = caseFromResult({ name: 'current input', input: { a: 1 }, result: { status: 'ok', text: '2' } });
+    const text = testFileWithResult('add.jsonata', { ...c, expected: 2 });
+    assert.match(text, /^\/\/ Test cases for add\.jsonata/);
+    const parsed = parseTestFile(text);
+    assert.equal(parsed.problems.length, 0);
+    const out = await runCases(ev, 'a + 1', parsed.cases);
+    assert.equal(out[0].status, 'pass');
+  });
+
+  test('an empty or failing transformation gets the structure as comments and a failing placeholder', async () => {
+    const input = { orders: [{ id: 'A', total: 5 }, { id: 'B', total: 7 }] };
+    const text = testFileSkeleton({ exprName: 'x.jsonata', reason: 'the expression returns nothing for the current input', input });
+    assert.match(text, /Structure of the current input/);
+    assert.match(text, /\/\/\s+orders/);
+    assert.match(text, /TODO/);
+    const parsed = parseTestFile(text);
+    assert.equal(parsed.cases.length, 1);
+    assert.deepEqual(parsed.cases[0].input, input);
+    const out = await runCases(ev, 'nothing', parsed.cases);
+    assert.equal(out[0].status, 'fail'); // placeholder null vs. no result: to be filled in
+    const file = testFileSkeleton({ exprName: 'x.jsonata', reason: 'r', inputFile: './in.json', input });
+    assert.equal(parseTestFile(file).cases[0].inputFile, './in.json');
+    assert.equal(parseTestFile(file).cases[0].input, undefined);
+  });
+
+  test('appending a case keeps comments and formatting', () => {
+    const base = testFileWithResult('x.jsonata', { name: 'one', input: { a: 1 }, expected: 2 });
+    const next = appendCaseText(base, { name: 'two', input: { a: 2 }, expected: 3 });
+    assert.ok(next.startsWith(base.slice(0, base.indexOf('{\n  "cases"'))), 'header comments kept');
+    assert.equal(parseTestFile(next).cases.length, 2);
+    const empty = appendCaseText('// c\n{ "cases": [] }', { name: 'n', expected: 1 });
+    assert.equal(parseTestFile(empty).cases.length, 1);
+    assert.ok(empty.startsWith('// c'));
+    const bare = appendCaseText('[ { "name": "a", "expected": 1 } ]', { name: 'b', expected: 2 });
+    assert.equal(parseTestFile(bare).cases.length, 2);
+    const trailing = appendCaseText('{ "cases": [ { "name": "a", "expected": 1 } // last\n ] }', { name: 'b', expected: 2 });
+    assert.equal(parseTestFile(trailing).cases.length, 2);
+    assert.throws(() => appendCaseText('{ "nothing": 1 }', { name: 'x', expected: 1 }), /no "cases"/);
+  });
+});
+
+
+describe('package.json contributions', () => {
+  test('when-clauses only use operators VS Code understands', async () => {
+    const pkg = JSON.parse(await fsp.readFile(path.join(__dirname, '..', 'package.json'), 'utf8'));
+    const whens: string[] = [];
+    for (const list of Object.values(pkg.contributes.menus) as any[][]) for (const m of list) if (m.when) whens.push(m.when);
+    for (const k of pkg.contributes.keybindings) if (k.when) whens.push(k.when);
+    assert.ok(whens.length > 10);
+    for (const w of whens) {
+      assert.ok(!/!~/.test(w), `"!~" is not a when-clause operator: ${w}`); // negate a regex with a lookahead instead
+      assert.ok(!/(^|[^=!<>])=([^=~]|$)/.test(w.replace(/\/.*?\//g, '')), `use == instead of = in: ${w}`);
+    }
   });
 });

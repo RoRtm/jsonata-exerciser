@@ -40,4 +40,5 @@ export const DIRECTIVES = `Workflow for writing JSONata with the JSONata Exercis
 3. Only after it produces the intended output, give the final expression in ONE \`\`\`jsonata code block and show a short sample of the output.
 4. If the target output shape is unclear, ask the user for an example of the desired output instead of guessing.
 5. Use #jsonataExerciserUpdate only when the user asks you to apply the expression to their Exerciser.
-6. If the user says an expression is slow, use #jsonataProfile (optionally with scaleArrays to simulate larger data) to find the hot spot before changing anything.`;
+6. If the user says an expression is slow, use #jsonataProfile (optionally with scaleArrays to simulate larger data) to find the hot spot before changing anything.
+7. If a name.test.json file exists next to the expression (test cases with input and expected output), run it with #jsonataRunTests after every change and do not report the work as finished while a case fails. When you write a new expression for data the user cares about, offer to add test cases.`;
