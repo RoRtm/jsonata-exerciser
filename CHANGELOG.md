@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.9.2
+
+- Fix: the JSONata status bar item kept showing the last "ok" or error after the Exerciser was closed. When the expression and result editors are both closed, the Exerciser is deactivated: evaluation stops, runtime error markers and the status are cleared, and the item only remains as a neutral entry while a JSON or JSONata editor is active. Opening the Exerciser again starts a fresh session.
+
 ## 1.9.1
 
 - Fix: the JSONata and demo buttons were still shown on `*.test.json` files because the `when` clause used an operator VS Code does not support (`!~`). It now uses a valid regular expression, and a test checks all `when` clauses.

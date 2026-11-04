@@ -65,6 +65,7 @@ export class SessionManager implements vscode.Disposable {
     this.status.text = '$(json) JSONata';
     this.status.tooltip = 'Open JSONata Exerciser';
     this.disposables.push(
+      this.closedTimerDisposable,
       this.status,
       vscode.workspace.onDidChangeTextDocument((e) => {
         if (this.active && this.isSessionUri(e.document.uri)) this.schedule();
@@ -75,7 +76,8 @@ export class SessionManager implements vscode.Disposable {
       vscode.window.onDidChangeActiveTextEditor((ed) => {
         this.updateStatusVisibility();
         void this.followEditor(ed);
-      })
+      }),
+      vscode.window.tabGroups.onDidChangeTabs(() => this.scheduleClosedCheck())
     );
     const savedDemo = this.ctx.globalState.get<string>(DEMO_KEY);
     if (savedDemo) this.currentDemo = demoById(savedDemo);
@@ -83,6 +85,38 @@ export class SessionManager implements vscode.Disposable {
     // Start the evaluator thread in the background so the first evaluation is instant.
     const warm = setTimeout(() => this.evaluator.warmUp(), 500);
     this.disposables.push({ dispose: () => clearTimeout(warm) });
+  }
+
+  private closedTimer?: NodeJS.Timeout;
+  private closedTimerDisposable = { dispose: () => this.closedTimer && clearTimeout(this.closedTimer) };
+
+  private scheduleClosedCheck(): void {
+    if (!this.active) return;
+    if (this.closedTimer) clearTimeout(this.closedTimer);
+    this.closedTimer = setTimeout(() => this.checkClosed(), 500);
+  }
+
+  /**
+   * When the expression and the result editors are both gone, the Exerciser is closed: stop evaluating
+   * and clear the status (an old "error" or "ok" must not stay in the status bar). Opening it again
+   * starts a fresh session.
+   */
+  private checkClosed(): void {
+    if (!this.active || this.openPending > 0) return;
+    const open = new Set<string>();
+    for (const g of vscode.window.tabGroups.all) {
+      for (const t of g.tabs) if (t.input instanceof vscode.TabInputText) open.add(t.input.uri.toString());
+    }
+    if (open.has(this.exprUri.toString()) || open.has(ResultContent.uri.toString())) return;
+    this.trace('expression and result editors closed: Exerciser deactivated');
+    this.active = false;
+    this.runId++;
+    if (this.timer) clearTimeout(this.timer);
+    this._last = undefined;
+    this.diag.setRuntime(this.exprUri, undefined);
+    this.updateStatus(undefined);
+    this.updateStatusVisibility();
+    this.emitter.fire();
   }
 
   /** The status bar entry doubles as a "ready" signal: it appears as soon as the extension is active. */
