@@ -197,14 +197,6 @@ export function activate(ctx: vscode.ExtensionContext): void {
     );
   });
 
-  reg('jsonataExerciser.applyExpression', async (expression: string) => {
-    if (typeof expression !== 'string') return;
-    await session.update({ expression });
-    if (!session.active) return;
-    const doc = vscode.workspace.textDocuments.find((d) => d.uri.toString() === session.exprUri.toString());
-    if (doc) await vscode.window.showTextDocument(doc, { preserveFocus: false });
-  });
-
   // Restart with the Exerciser panes open: resume live evaluation once the tabs are restored.
   setTimeout(() => void session.resumeFromTabs().catch(() => undefined), 800);
 

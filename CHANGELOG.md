@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.10.0
+
+- **Removed the `@jsonata` chat participant** (`/write`, `/explain`, `/fix`). VS Code deprecated chat participants and the Copilot harness does not support them (the Local harness, which still does, is being retired by February 2027). Everything it did remains available: the language model tools (`#jsonataEvaluate`, `#jsonataInspect`, `#jsonataRunTests`, `#jsonataExerciserState`, `#jsonataExerciserUpdate`, ...) are called by the Copilot agent itself, and the MCP server serves Claude and other clients.
+- *Add Copilot / Claude Instructions to Workspace...* now creates a **skill** (`.github/skills/jsonata/SKILL.md`, run with `/jsonata`) and a **custom agent** (`.github/agents/jsonata.agent.md`) instead of a prompt file, which only the Local harness loads. Existing prompt files are left untouched.
+- The internal *Apply Expression to Exerciser* command (used by the participant's button) is gone; ask the agent to apply an expression with `#jsonataExerciserUpdate`.
+
 ## 1.9.2
 
 - Fix: the JSONata status bar item kept showing the last "ok" or error after the Exerciser was closed. When the expression and result editors are both closed, the Exerciser is deactivated: evaluation stops, runtime error markers and the status are cleared, and the item only remains as a neutral entry while a JSON or JSONata editor is active. Opening the Exerciser again starts a fresh session.

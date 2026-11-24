@@ -126,10 +126,9 @@ Filter values come from the input too. Typing `orders[id=` lists the `id` values
 
 | | |
 | --- | --- |
-| **`@jsonata` chat participant** | `/write`, `/explain`, `/fix`. Sees your data and expression, answers with a `jsonata` block, verifies it locally and offers **Apply to Exerciser**. |
 | **Agent-mode tools** | `#jsonataEvaluate`, `#jsonataValidate`, `#jsonataInspect`, `#jsonataProfile`, `#jsonataRunTests`, `#jsonataInputStructure`, `#jsonataGuide`, `#jsonataExerciserState`, `#jsonataExerciserUpdate`. |
 | **Claude via MCP** | Bundled stdio server for Claude Code, Claude Desktop, Cursor and others: evaluate, inspect, profile, run tests, validate, format, function help, describe input, guide. |
-| **Project directives** | One command writes Copilot instruction files, a `/jsonata` prompt file and `CLAUDE.md` / `AGENTS.md` sections. |
+| **Project directives** | One command writes Copilot instruction files, a `/jsonata` skill, a JSONata custom agent and `CLAUDE.md` / `AGENTS.md` sections. |
 
 ![Copilot Chat showing a JSONata expression and verified product-price output beside the input orders](images/copilot-support.png)
 
@@ -151,16 +150,17 @@ Filter values come from the input too. Typing `orders[id=` lists the `id` values
 
 Requires GitHub Copilot Chat. Works with the model you select, including Claude models offered through Copilot.
 
+The extension provides its functions as **language model tools**, which the Copilot agent calls on its own, plus an optional **skill** and **custom agent** for the workflow. (Version 1.10 removed the `@jsonata` chat participant, because VS Code deprecated chat participants and the Copilot harness does not support them.)
+
 | You write in chat | What happens |
 | --- | --- |
-| `@jsonata /write #file:orders.json total per customer` | Reads the file, adds a structure outline and cheat sheet, answers, **tests the expression locally**, offers *Apply to Exerciser*. |
-| `@jsonata /fix` | Uses the expression, input and error currently in your Exerciser. |
-| `@jsonata` plus a ```` ```json ```` / ```` ```jsonata ```` block | Uses those blocks instead of the Exerciser content. |
+| `/jsonata total per customer` (skill, after *Add Copilot / Claude Instructions to Workspace...*) | Runs the full workflow: reads the Exerciser or the attached file, writes the expression, **tests it locally** and fixes it until it works. |
+| Pick the **JSONata** agent (custom agent, same command) | A specialist for an ongoing conversation about your expressions, with the tools preselected. |
 | Agent mode: `Use #jsonataExerciserState and write an expression that ...` | Reads your Exerciser, writes, and evaluates with `#jsonataEvaluate` until it works. |
 | Agent mode: `Using #jsonataInputStructure on data/orders.json ...` | Large files are never pasted; tools take `inputFile` / `expressionFile` paths. |
 | `#jsonataGuide` | Loads cheat sheet and workflow if the model writes JavaScript-style expressions. |
 
-**Make it permanent for a repository:** run **JSONata: Add Copilot / Claude Instructions to Workspace...**. It creates `.github/instructions/jsonata.instructions.md`, `.github/prompts/jsonata.prompt.md` (type `/jsonata`), and a `CLAUDE.md` (optionally `AGENTS.md`) section. Review and commit them; they are plain Markdown.
+**Make it permanent for a repository:** run **JSONata: Add Copilot / Claude Instructions to Workspace...**. It creates `.github/instructions/jsonata.instructions.md`, `.github/skills/jsonata/SKILL.md` (type `/jsonata`), `.github/agents/jsonata.agent.md` (the JSONata agent), and a `CLAUDE.md` (optionally `AGENTS.md`) section. Review and commit them; they are plain Markdown.
 
 AI answers can be wrong. The local check catches syntax errors and shows real output, but you must confirm the logic is what you intended.
 
@@ -242,17 +242,6 @@ Type `JSONata` in the Command Palette (`Ctrl+Shift+P`).
 * The Exerciser targets the bundled JSONata 2.x. Your production runtime may behave differently (another version or a non-JavaScript port).
 * Large inputs (several MB) are re-parsed on every keystroke; raise `debounceMs` if typing lags.
 * **After updating the extension, reload the window** (use the *Reload Window* / *Restart Extensions* prompt, or `Developer: Reload Window`). A running window can keep pointing at files of the old version, so the Exerciser, the demo picker or the evaluator may not start until you reload. The extension shows a *Reload Window* prompt when it detects this. If the three panes were open during the update, reload once and use **JSONata: Open Exerciser** if they do not resume on their own.
-
-## Development
-
-```bash
-npm install
-npm run build        # bundles extension, worker and MCP server into dist/
-npm test             # builds, then runs unit tests
-npm run typecheck
-```
-
-Press `F5` for an Extension Development Host. `src/core` has no `vscode` dependency and is covered by plain Node tests. See [PUBLISHING.md](PUBLISHING.md) to release and [CHANGELOG.md](CHANGELOG.md) for history.
 
 ## Third-party software
 

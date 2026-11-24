@@ -2,7 +2,7 @@
   "name": "jsonata-exerciser",
   "displayName": "JSONata Exerciser",
   "description": "Local, real-time JSONata playground and debugger for VS Code: live output, IntelliSense, validation, formatter, demos, online help and Copilot / Claude integration.",
-  "version": "1.9.2",
+  "version": "1.10.0",
   "publisher": "ro-rtm",
   "license": "MIT",
   "icon": "images/icon.png",
@@ -163,11 +163,6 @@
       {
         "command": "jsonataExerciser.copyMcpConfig",
         "title": "Copy MCP Server Config (Claude Code / Claude Desktop)",
-        "category": "JSONata"
-      },
-      {
-        "command": "jsonataExerciser.applyExpression",
-        "title": "Apply Expression to Exerciser",
         "category": "JSONata"
       },
       {
@@ -384,12 +379,6 @@
           "when": "resourceScheme != jsonata-result && (resourceLangId == json || resourceLangId == jsonc || resourceLangId == jsonata)",
           "group": "1_open@50"
         }
-      ],
-      "commandPalette": [
-        {
-          "command": "jsonataExerciser.applyExpression",
-          "when": "false"
-        }
       ]
     },
     "configuration": {
@@ -497,29 +486,6 @@
         }
       }
     },
-    "chatParticipants": [
-      {
-        "id": "jsonata-exerciser.jsonata",
-        "name": "jsonata",
-        "fullName": "JSONata Exerciser",
-        "description": "Write, explain and fix JSONata expressions. Reads your Exerciser data, #file references and ```json / ```jsonata blocks in the prompt",
-        "isSticky": true,
-        "commands": [
-          {
-            "name": "write",
-            "description": "Write a JSONata expression for the current input"
-          },
-          {
-            "name": "explain",
-            "description": "Explain the expression currently in the Exerciser"
-          },
-          {
-            "name": "fix",
-            "description": "Fix the error in the current expression"
-          }
-        ]
-      }
-    ],
     "languageModelTools": [
       {
         "name": "jsonata_evaluate",

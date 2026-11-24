@@ -14,20 +14,35 @@ ${DIRECTIVES}
 
 ${CHEATSHEET}`;
 
-const promptFile = `---
-mode: agent
-description: Write or fix a JSONata expression for my JSON data, tested with the JSONata Exerciser tools
-tools: [${TOOL_REFS.map((t) => `'${t}'`).join(', ')}]
+// Copilot harness: reusable workflows are skills (prompt files are only loaded by the Local harness, which is being retired)
+// and a persistent specialist role is a custom agent. Both use the extension's language model tools.
+const skillFile = `---
+name: jsonata
+description: Write, explain or fix a JSONata expression for the user's JSON data and verify it with the JSONata Exerciser tools
+argument-hint: "[what the expression should produce]"
+disable-model-invocation: true
 ---
-Goal: \${input:goal:What should the JSONata expression produce? (describe or paste an example output)}
+The goal is the text the user typed after the command. If there is none, ask what the JSONata expression should produce (a description or an example output).
 
 Data and context:
-- If the JSONata Exerciser is open, start with #jsonataExerciserState; otherwise use the JSON file I attached or the current file (\${file}) via the \`inputFile\` parameter of #jsonataEvaluate and #jsonataInputStructure.
-- Existing expression (if any) is in the Exerciser or in the attached .jsonata file.
+- If the JSONata Exerciser is open, start with the tool \`jsonata_getExerciser\` (#jsonataExerciserState). Otherwise use the JSON file the user attached or the current file via the \`inputFile\` parameter of \`jsonata_evaluate\` and \`jsonata_inputStructure\`.
+- An existing expression (if any) is in the Exerciser or in the attached .jsonata file; if a name.test.json sits next to it, run it with \`jsonata_runTests\`.
 
 ${DIRECTIVES}
 
-Use #jsonataGuide if you are unsure about JSONata syntax.
+Call \`jsonata_guide\` (#jsonataGuide) if you are unsure about JSONata syntax.
+`;
+
+const agentFile = `---
+name: JSONata
+description: Specialist for writing, explaining, fixing, testing and profiling JSONata expressions against real data
+tools: [${TOOL_REFS.map((t) => `'${t}'`).join(', ')}]
+---
+You are an expert in JSONata 2.x (the JSON query and transformation language, https://docs.jsonata.org). JSONata is not JavaScript, jq or JSONPath.
+
+${DIRECTIVES}
+
+${CHEATSHEET}
 `;
 
 const agentSection = `${BEGIN}
@@ -85,7 +100,8 @@ export async function addAiInstructions(): Promise<void> {
   const picks = await vscode.window.showQuickPick(
     [
       { label: 'Copilot instructions', description: '.github/instructions/jsonata.instructions.md (applies to *.jsonata)', key: 'ins', picked: true },
-      { label: 'Copilot prompt file', description: '.github/prompts/jsonata.prompt.md (run with /jsonata in chat)', key: 'prompt', picked: true },
+      { label: 'Copilot skill', description: '.github/skills/jsonata/SKILL.md (run with /jsonata in chat)', key: 'skill', picked: true },
+      { label: 'Copilot custom agent', description: '.github/agents/jsonata.agent.md (a JSONata specialist to pick in chat)', key: 'agent', picked: true },
       { label: 'CLAUDE.md section', description: 'for Claude Code', key: 'claude', picked: true },
       { label: 'AGENTS.md section', description: 'for other coding agents', key: 'agents', picked: false }
     ],
@@ -96,8 +112,10 @@ export async function addAiInstructions(): Promise<void> {
   for (const p of picks) {
     if (p.key === 'ins') {
       if ((await writeNew(vscode.Uri.joinPath(root, '.github/instructions/jsonata.instructions.md'), instructionsFile)) === 'written') done.push('Copilot instructions');
-    } else if (p.key === 'prompt') {
-      if ((await writeNew(vscode.Uri.joinPath(root, '.github/prompts/jsonata.prompt.md'), promptFile)) === 'written') done.push('prompt file');
+    } else if (p.key === 'skill') {
+      if ((await writeNew(vscode.Uri.joinPath(root, '.github/skills/jsonata/SKILL.md'), skillFile)) === 'written') done.push('Copilot skill');
+    } else if (p.key === 'agent') {
+      if ((await writeNew(vscode.Uri.joinPath(root, '.github/agents/jsonata.agent.md'), agentFile)) === 'written') done.push('custom agent');
     } else if (p.key === 'claude') {
       await upsertSection(vscode.Uri.joinPath(root, 'CLAUDE.md'), agentSection);
       done.push('CLAUDE.md');
@@ -108,7 +126,7 @@ export async function addAiInstructions(): Promise<void> {
   }
   if (done.length) {
     void vscode.window.showInformationMessage(
-      `JSONata directives written: ${done.join(', ')}. Review and commit them; in Copilot Chat type /jsonata to use the prompt file.`
+      `JSONata directives written: ${done.join(', ')}. Review and commit them; in Copilot Chat type /jsonata to run the skill or pick the JSONata agent.`
     );
   }
 }

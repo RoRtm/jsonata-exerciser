@@ -1,4 +1,4 @@
-/** JSONata guidance shared by the chat participant, the LM tools, the MCP server and the generated instruction files. */
+/** JSONata guidance shared by the LM tools, the MCP server and the generated instruction files. */
 
 export const CHEATSHEET = `# JSONata cheat sheet (JSONata 2.x, not JavaScript)
 
